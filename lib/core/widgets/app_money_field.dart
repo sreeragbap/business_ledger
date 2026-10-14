@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:business_ledger/core/money/currency.dart';
 import 'package:business_ledger/core/money/money.dart';
 import 'package:business_ledger/core/theme/app_text_styles.dart';
@@ -185,34 +183,9 @@ class MoneyInputFormatter extends TextInputFormatter {
     TextEditingValue oldValue,
     TextEditingValue newValue,
   ) {
-    // Some keyboards (and locales) type a comma for the decimal point; accept
-    // it only when it is clearly the point: the last character, and the
-    // field has no point yet.
-    var text = newValue.text;
-    if (currency.decimals > 0 &&
-        text.endsWith(',') &&
-        !text.contains('.') &&
-        oldValue.text.length + 1 == text.length &&
-        _endsAfterGroupDigits(oldValue.text)) {
-      text = '${text.substring(0, text.length - 1)}.';
-    }
+    final text = newValue.text;
     if (!_pattern.hasMatch(text)) return oldValue;
     if (text.replaceAll(RegExp(r'\D'), '').length > _maxDigits) return oldValue;
-    if (text == newValue.text) return newValue;
-    return newValue.copyWith(
-      text: text,
-      selection: TextSelection.collapsed(offset: text.length),
-    );
-  }
-
-  /// A comma typed after fewer than three digits since the last comma cannot
-  /// be a grouping separator, so it is a decimal point.
-  static bool _endsAfterGroupDigits(String text) {
-    final tail = text.split(',').last;
-    return tail.isNotEmpty && tail.length < 3;
+    return newValue;
   }
 }
-
-/// Keeps the import of `dart:async` honest for `unawaited` users downstream.
-@visibleForTesting
-void ignoreFuture(Future<void> future) => unawaited(future);

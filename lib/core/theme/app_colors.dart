@@ -75,6 +75,9 @@ abstract final class AppColors {
   /// at low opacity, so it reads as that colour without competing with text.
   static Color tint(Color colour) => colour.withValues(alpha: 0.14);
 
+  // --- Brand marks (third-party) ------------------------------------------
+  static const Color googleBlue = Color(0xFF4285F4);
+
   // --- Misc ----------------------------------------------------------------
   static const Color scrim = Color(0xB3000000);
   static const Color transparent = Colors.transparent;

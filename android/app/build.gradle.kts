@@ -15,11 +15,9 @@ android {
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
         applicationId = "com.iocod.business_ledger"
-        // You can update the following values to match your application needs.
-        // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdk = flutter.minSdkVersion
+        // 24: local_auth_android's floor, and above Firebase's 23.
+        minSdk = maxOf(flutter.minSdkVersion, 24)
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
@@ -42,4 +40,10 @@ kotlin {
 
 flutter {
     source = "../.."
+}
+
+dependencies {
+    // MainActivity is a FlutterFragmentActivity (for local_auth); its launch
+    // theme must be an AppCompat theme or it crashes on Android 8 and below.
+    implementation("androidx.appcompat:appcompat:1.7.1")
 }

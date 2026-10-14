@@ -1,6 +1,6 @@
 import 'package:equatable/equatable.dart';
 
-/// A business's currency: what [Money] is denominated in.
+/// A business's currency: what `Money` is denominated in.
 ///
 /// [decimals] is the number of minor-unit digits (2 for USD and INR, 0 for
 /// JPY, 3 for KWD). It is fixed when the business is created: changing it

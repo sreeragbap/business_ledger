@@ -68,8 +68,7 @@ final class Success<T> extends AppResult<T> {
   final T data;
 
   @override
-  bool operator ==(Object other) =>
-      other is Success<T> && other.data == data;
+  bool operator ==(Object other) => other is Success<T> && other.data == data;
 
   @override
   int get hashCode => Object.hash(Success, data);
@@ -84,8 +83,7 @@ final class Failure<T> extends AppResult<T> {
   final AppException error;
 
   @override
-  bool operator ==(Object other) =>
-      other is Failure<T> && other.error == error;
+  bool operator ==(Object other) => other is Failure<T> && other.error == error;
 
   @override
   int get hashCode => Object.hash(Failure, error);

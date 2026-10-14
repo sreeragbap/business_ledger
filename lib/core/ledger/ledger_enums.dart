@@ -1,4 +1,4 @@
-/// The ledger's vocabulary. Wire keys ([key]) are shared with Cloud
+/// The ledger's vocabulary. Wire keys (`key`) are shared with Cloud
 /// Functions (`functions/src/ledger.ts`) and the security rules: renaming
 /// one is a data migration, not a refactor.
 library;

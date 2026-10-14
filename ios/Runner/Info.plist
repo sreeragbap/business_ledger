@@ -24,6 +24,26 @@
 	<string>????</string>
 	<key>CFBundleVersion</key>
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
+	<key>NSFaceIDUsageDescription</key>
+	<string>Business Ledger uses Face ID to unlock the app when app lock is on.</string>
+	<key>UIUserInterfaceStyle</key>
+	<string>Dark</string>
+	<!--
+	Google Sign-In: once `flutterfire configure` has produced
+	GoogleService-Info.plist, add its REVERSED_CLIENT_ID as a URL scheme:
+
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>com.googleusercontent.apps.REPLACE_WITH_REVERSED_CLIENT_ID</string>
+			</array>
+		</dict>
+	</array>
+	-->
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>UIApplicationSceneManifest</key>

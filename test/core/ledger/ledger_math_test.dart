@@ -53,7 +53,7 @@ void main() {
   group('settlements', () {
     for (final raw in cases['settlements'] as List<dynamic>) {
       final c = raw as Map<String, dynamic>;
-      test(c['name'], () {
+      test(c['name'] as String, () {
         final start = c['start'] as Map<String, dynamic>;
         final settleable = (start['settleable'] as bool?) ?? true;
         var balance = balanceOf(start);
@@ -86,7 +86,7 @@ void main() {
   group('total edits', () {
     for (final raw in cases['totalEdits'] as List<dynamic>) {
       final c = raw as Map<String, dynamic>;
-      test(c['name'], () {
+      test(c['name'] as String, () {
         final balance = balanceOf(c['start'] as Map<String, dynamic>);
         final newTotal = c['newTotal'] as int;
         final violation = LedgerMath.checkTotalEdit(balance, newTotal);
@@ -105,7 +105,7 @@ void main() {
   group('cancels', () {
     for (final raw in cases['cancels'] as List<dynamic>) {
       final c = raw as Map<String, dynamic>;
-      test(c['name'], () {
+      test(c['name'] as String, () {
         final start = c['start'] as Map<String, dynamic>;
         final violation = LedgerMath.checkCancel(
           balanceOf(start),
@@ -119,7 +119,7 @@ void main() {
   group('overdue', () {
     for (final raw in cases['overdue'] as List<dynamic>) {
       final c = raw as Map<String, dynamic>;
-      test(c['name'], () {
+      test(c['name'] as String, () {
         expect(
           LedgerMath.isOverdue(
             status: TransactionStatus.fromKey(c['status'] as String),

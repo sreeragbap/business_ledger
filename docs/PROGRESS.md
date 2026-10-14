@@ -44,8 +44,14 @@ Reference conventions: `/Users/sreeragkm/Documents/projects/easify_crm_flutter`
        `npm test` (unit) and `npm run test:emulator` (26 rules + integration tests:
        isolation, concurrency, duplicates, refunds, cancel/void, numbering) pass.
        Callable contract: [FUNCTIONS_API.md](FUNCTIONS_API.md).
-5. [ ] Flutter core: app/bootstrap/flavors, DI, router, dark theme, widgets,
-       AppResult, Status, Firebase services, auth (Google/Apple) + biometric lock
+5. [x] Flutter core: bootstrap/flavors (Dart-only, `-t lib/main_dev.dart`), emulator
+       switch (`--dart-define=USE_EMULATOR=true`), DI module, auto_route + AuthGuard,
+       dark theme tokens (AA contrast tested), App* widgets, AppResult/AppException
+       (maps functions `details.reason/violation/field`), CallableClient (offline-guarded),
+       SearchTokens (shared fixtures), Google/Apple auth, biometric app lock.
+       137 Dart tests pass, analyze clean. Firebase options are placeholders until
+       `flutterfire configure` (stage 10); iOS needs REVERSED_CLIENT_ID URL scheme,
+       Android needs SHA fingerprints, Apple sign-in capability + provider enabled.
 6. [ ] Businesses (create/switch/settings/members), categories, fields, parties, projects
 7. [ ] Transactions: drafts (offline), confirm, edit, cancel, search/filter
 8. [ ] Payments/refunds/credits, dashboard & reports, PDF documents

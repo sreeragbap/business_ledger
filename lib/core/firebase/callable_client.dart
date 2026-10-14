@@ -7,7 +7,7 @@ import 'package:injectable/injectable.dart';
 /// The one way the app calls Cloud Functions.
 ///
 /// It adds nothing to the payload: callers put a `requestId` from
-/// `RequestIds.next()` in [data] themselves, because only the caller knows
+/// `RequestIds.next()` in the payload themselves, because only the caller knows
 /// which taps are retries of the same intent.
 @lazySingleton
 class CallableClient {

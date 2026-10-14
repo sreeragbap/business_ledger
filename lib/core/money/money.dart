@@ -44,7 +44,9 @@ abstract final class Money {
     final whole = NumberFormat.decimalPattern(
       'en_US',
     ).format(int.parse(digits.substring(0, split)));
-    final fraction = currency.decimals == 0 ? '' : '.${digits.substring(split)}';
+    final fraction = currency.decimals == 0
+        ? ''
+        : '.${digits.substring(split)}';
     return '${negative ? '-' : ''}$whole$fraction';
   }
 
