@@ -1,0 +1,141 @@
+rules_version = '2';
+
+// Business isolation: every path under businesses/{bid} requires a
+// membership doc. Clients write only drafts and configuration; anything
+// that moves money goes through Cloud Functions (Admin SDK, not bound by
+// these rules). See docs/ARCHITECTURE.md §2 and §8.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() { return request.auth != null; }
+
+    function member(bid) {
+      return signedIn() && exists(/databases/$(database)/documents/businesses/$(bid)/members/$(request.auth.uid));
+    }
+
+    function roleRank(bid) {
+      let role = get(/databases/$(database)/documents/businesses/$(bid)/members/$(request.auth.uid)).data.role;
+      return role == 'owner' ? 3 : role == 'admin' ? 2 : role == 'editor' ? 1 : 0;
+    }
+
+    function atLeast(bid, rank) { return member(bid) && roleRank(bid) >= rank; }
+    function editor(bid) { return atLeast(bid, 1); }
+    function admin(bid) { return atLeast(bid, 2); }
+    function owner(bid) { return atLeast(bid, 3); }
+
+    function changes() { return request.resource.data.diff(resource.data).affectedKeys(); }
+
+    function shortString(value, max) { return value is string && value.size() <= max; }
+
+    match /users/{uid} {
+      allow read, write: if signedIn() && request.auth.uid == uid;
+    }
+
+    // Idempotency records: functions only.
+    match /requests/{id} {
+      allow read, write: if false;
+    }
+
+    match /businesses/{bid} {
+      // Created by createBusiness (with its owner membership). Listing a
+      // user's businesses queries memberUids array-contains uid.
+      allow get: if member(bid);
+      allow list: if signedIn() && request.auth.uid in resource.data.memberUids;
+      allow create, delete: if false;
+      allow update: if admin(bid)
+        && changes().hasOnly(['name', 'description', 'timezone', 'settings', 'updatedAt'])
+        && shortString(request.resource.data.name, 80)
+        && request.resource.data.name.size() > 0
+        || owner(bid) && changes().hasOnly(['archived', 'updatedAt']);
+
+      match /members/{uid} {
+        allow read: if member(bid);
+        allow write: if false;
+      }
+
+      // Configuration: editor and up, offline-friendly. Never deleted by
+      // clients: categories through deleteCategory, the rest are archived.
+      match /categories/{id} {
+        allow read: if member(bid);
+        allow create, update: if editor(bid) && validCategory(request.resource.data);
+        allow delete: if false;
+      }
+      match /fields/{id} {
+        allow read: if member(bid);
+        allow create, update: if editor(bid)
+          && shortString(request.resource.data.label, 60)
+          && request.resource.data.type in ['text', 'number', 'date', 'select', 'checkbox'];
+        allow delete: if false;
+      }
+      match /parties/{id} {
+        allow read: if member(bid);
+        allow create, update: if editor(bid)
+          && shortString(request.resource.data.name, 120)
+          && request.resource.data.kind in ['customer', 'supplier', 'both'];
+        allow delete: if false;
+      }
+      match /projects/{id} {
+        allow read: if member(bid);
+        allow create, update: if editor(bid) && shortString(request.resource.data.name, 120);
+        allow delete: if false;
+      }
+
+      function validCategory(data) {
+        return shortString(data.name, 60) && data.name.size() > 0
+          && data.kind in ['income', 'expense', 'any']
+          && data.archived is bool
+          && data.fieldIds is list;
+      }
+
+      // Drafts only. A client can neither create nor turn anything into a
+      // confirmed entry, nor touch the money a function maintains.
+      match /transactions/{tid} {
+        allow read: if member(bid);
+        allow create: if editor(bid) && validDraft(request.resource.data);
+        allow update: if editor(bid)
+          && resource.data.status == 'draft'
+          && validDraft(request.resource.data);
+        allow delete: if editor(bid) && resource.data.status == 'draft';
+
+        match /settlements/{sid} {
+          allow read: if member(bid);
+          allow write: if false;
+        }
+      }
+
+      function validDraft(data) {
+        return data.status == 'draft'
+          && data.createdBy is string
+          && data.type in ['income', 'sale', 'expense', 'purchase', 'payment', 'adjustment']
+          && data.get('paidMinor', 0) == 0
+          && data.get('refundedMinor', 0) == 0
+          && data.get('creditedMinor', 0) == 0
+          && !data.keys().hasAny(['confirmedAt', 'confirmedBy', 'cancelledAt', 'linkKind', 'linkedTransactionId', 'settlementId'])
+          && (!('totalMinor' in data) || data.totalMinor is int && data.totalMinor >= 0 && data.totalMinor <= 10000000000000)
+          && (!('description' in data) || shortString(data.description, 200))
+          && (!('lineItems' in data) || data.lineItems is list && data.lineItems.size() <= 200)
+          && (!('attachments' in data) || data.attachments is list && data.attachments.size() <= 20);
+      }
+
+      match /documents/{id} {
+        allow read: if member(bid);
+        // Only the rendered PDF's storage path may be attached by a client.
+        allow update: if editor(bid) && changes().hasOnly(['storagePath'])
+          && request.resource.data.storagePath is string;
+        allow create, delete: if false;
+      }
+
+      match /audit/{id} {
+        allow read: if admin(bid);
+        allow write: if false;
+      }
+      match /stats/{day} {
+        allow read: if member(bid);
+        allow write: if false;
+      }
+      match /counters/{type} {
+        allow read, write: if false;
+      }
+    }
+  }
+}

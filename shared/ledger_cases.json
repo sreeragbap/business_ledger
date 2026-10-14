@@ -1,0 +1,523 @@
+{
+  "_comment": "Ledger rule fixtures shared by test/core/ledger (Dart) and functions/test (TypeScript). Amounts are minor units. Violation keys match LedgerViolation (Dart) / Violation (TS).",
+  "settlements": [
+    {
+      "name": "partial payment leaves an outstanding balance",
+      "start": {
+        "total": 10000
+      },
+      "ops": [
+        {
+          "kind": "payment",
+          "amount": 4000
+        }
+      ],
+      "end": {
+        "paid": 4000,
+        "outstanding": 6000,
+        "effective": 10000,
+        "status": "partiallyPaid"
+      }
+    },
+    {
+      "name": "two partial payments settle it in full",
+      "start": {
+        "total": 10000
+      },
+      "ops": [
+        {
+          "kind": "payment",
+          "amount": 4000
+        },
+        {
+          "kind": "payment",
+          "amount": 6000
+        }
+      ],
+      "end": {
+        "paid": 10000,
+        "outstanding": 0,
+        "effective": 10000,
+        "status": "paid"
+      }
+    },
+    {
+      "name": "overpayment is refused and changes nothing",
+      "start": {
+        "total": 10000,
+        "paid": 9000
+      },
+      "ops": [
+        {
+          "kind": "payment",
+          "amount": 1001,
+          "violation": "overpayment"
+        }
+      ],
+      "end": {
+        "paid": 9000,
+        "outstanding": 1000,
+        "status": "partiallyPaid"
+      }
+    },
+    {
+      "name": "zero and negative amounts are refused",
+      "start": {
+        "total": 10000
+      },
+      "ops": [
+        {
+          "kind": "payment",
+          "amount": 0,
+          "violation": "nonPositiveAmount"
+        },
+        {
+          "kind": "payment",
+          "amount": -5,
+          "violation": "nonPositiveAmount"
+        }
+      ],
+      "end": {
+        "paid": 0,
+        "outstanding": 10000,
+        "status": "unpaid"
+      }
+    },
+    {
+      "name": "full refund of a paid sale keeps the balance closed",
+      "start": {
+        "total": 10000,
+        "paid": 10000
+      },
+      "ops": [
+        {
+          "kind": "refund",
+          "amount": 10000
+        }
+      ],
+      "end": {
+        "refunded": 10000,
+        "outstanding": 0,
+        "effective": 0,
+        "status": "refunded"
+      }
+    },
+    {
+      "name": "partial refund reduces recognised amount only",
+      "start": {
+        "total": 10000,
+        "paid": 10000
+      },
+      "ops": [
+        {
+          "kind": "refund",
+          "amount": 3000
+        }
+      ],
+      "end": {
+        "refunded": 3000,
+        "outstanding": 0,
+        "effective": 7000,
+        "status": "partiallyRefunded"
+      }
+    },
+    {
+      "name": "cannot refund more than was paid",
+      "start": {
+        "total": 10000,
+        "paid": 4000
+      },
+      "ops": [
+        {
+          "kind": "refund",
+          "amount": 4001,
+          "violation": "overRefund"
+        }
+      ],
+      "end": {
+        "refunded": 0,
+        "outstanding": 6000,
+        "status": "partiallyPaid"
+      }
+    },
+    {
+      "name": "refund of a partly paid invoice still leaves the unpaid part owed",
+      "start": {
+        "total": 10000,
+        "paid": 4000
+      },
+      "ops": [
+        {
+          "kind": "refund",
+          "amount": 4000
+        }
+      ],
+      "end": {
+        "refunded": 4000,
+        "outstanding": 6000,
+        "effective": 6000,
+        "status": "refunded"
+      }
+    },
+    {
+      "name": "credit closes the remainder without cash",
+      "start": {
+        "total": 10000,
+        "paid": 9500
+      },
+      "ops": [
+        {
+          "kind": "credit",
+          "amount": 500
+        }
+      ],
+      "end": {
+        "credited": 500,
+        "outstanding": 0,
+        "effective": 9500,
+        "status": "paid"
+      }
+    },
+    {
+      "name": "credit cannot exceed outstanding",
+      "start": {
+        "total": 10000,
+        "paid": 9500
+      },
+      "ops": [
+        {
+          "kind": "credit",
+          "amount": 501,
+          "violation": "overCredit"
+        }
+      ],
+      "end": {
+        "credited": 0,
+        "outstanding": 500,
+        "status": "partiallyPaid"
+      }
+    },
+    {
+      "name": "payment after a credit can only cover the remainder",
+      "start": {
+        "total": 10000,
+        "credited": 2000
+      },
+      "ops": [
+        {
+          "kind": "payment",
+          "amount": 8001,
+          "violation": "overpayment"
+        },
+        {
+          "kind": "payment",
+          "amount": 8000
+        }
+      ],
+      "end": {
+        "paid": 8000,
+        "outstanding": 0,
+        "effective": 8000,
+        "status": "paid"
+      }
+    },
+    {
+      "name": "drafts cannot be settled",
+      "start": {
+        "total": 10000,
+        "transactionStatus": "draft"
+      },
+      "ops": [
+        {
+          "kind": "payment",
+          "amount": 100,
+          "violation": "notConfirmed"
+        }
+      ],
+      "end": {
+        "paid": 0,
+        "outstanding": 10000,
+        "status": "unpaid"
+      }
+    },
+    {
+      "name": "cancelled transactions cannot be settled",
+      "start": {
+        "total": 10000,
+        "transactionStatus": "cancelled"
+      },
+      "ops": [
+        {
+          "kind": "payment",
+          "amount": 100,
+          "violation": "notConfirmed"
+        }
+      ],
+      "end": {
+        "paid": 0,
+        "outstanding": 10000,
+        "status": "unpaid"
+      }
+    },
+    {
+      "name": "adjustments take no settlements",
+      "start": {
+        "total": 10000,
+        "settleable": false
+      },
+      "ops": [
+        {
+          "kind": "payment",
+          "amount": 100,
+          "violation": "notSettleable"
+        }
+      ],
+      "end": {
+        "paid": 0,
+        "status": "notApplicable"
+      }
+    }
+  ],
+  "totalEdits": [
+    {
+      "name": "raise total",
+      "start": {
+        "total": 10000,
+        "paid": 4000
+      },
+      "newTotal": 12000,
+      "end": {
+        "outstanding": 8000,
+        "status": "partiallyPaid"
+      }
+    },
+    {
+      "name": "lower total to exactly paid marks it paid",
+      "start": {
+        "total": 10000,
+        "paid": 4000
+      },
+      "newTotal": 4000,
+      "end": {
+        "outstanding": 0,
+        "status": "paid"
+      }
+    },
+    {
+      "name": "lower total below paid is refused",
+      "start": {
+        "total": 10000,
+        "paid": 4000
+      },
+      "newTotal": 3999,
+      "violation": "totalBelowSettled"
+    },
+    {
+      "name": "total below paid plus credit is refused",
+      "start": {
+        "total": 10000,
+        "paid": 4000,
+        "credited": 1000
+      },
+      "newTotal": 4999,
+      "violation": "totalBelowSettled"
+    },
+    {
+      "name": "zero total is refused",
+      "start": {
+        "total": 10000
+      },
+      "newTotal": 0,
+      "violation": "nonPositiveAmount"
+    }
+  ],
+  "cancels": [
+    {
+      "name": "unpaid confirmed can be cancelled",
+      "start": {
+        "total": 10000
+      }
+    },
+    {
+      "name": "paid cannot be cancelled",
+      "start": {
+        "total": 10000,
+        "paid": 100
+      },
+      "violation": "cancelWithMoney"
+    },
+    {
+      "name": "fully refunded can be cancelled",
+      "start": {
+        "total": 10000,
+        "paid": 5000,
+        "refunded": 5000
+      }
+    },
+    {
+      "name": "credited only can be cancelled",
+      "start": {
+        "total": 10000,
+        "credited": 300
+      }
+    },
+    {
+      "name": "already cancelled",
+      "start": {
+        "total": 10000,
+        "transactionStatus": "cancelled"
+      },
+      "violation": "alreadyCancelled"
+    }
+  ],
+  "overdue": [
+    {
+      "name": "past due with balance",
+      "status": "confirmed",
+      "outstanding": 1,
+      "dueDate": "2026-10-13",
+      "today": "2026-10-14",
+      "expect": true
+    },
+    {
+      "name": "due today is not overdue",
+      "status": "confirmed",
+      "outstanding": 1,
+      "dueDate": "2026-10-14",
+      "today": "2026-10-14",
+      "expect": false
+    },
+    {
+      "name": "settled is never overdue",
+      "status": "confirmed",
+      "outstanding": 0,
+      "dueDate": "2026-01-01",
+      "today": "2026-10-14",
+      "expect": false
+    },
+    {
+      "name": "draft is never overdue",
+      "status": "draft",
+      "outstanding": 100,
+      "dueDate": "2026-01-01",
+      "today": "2026-10-14",
+      "expect": false
+    },
+    {
+      "name": "cancelled is never overdue",
+      "status": "cancelled",
+      "outstanding": 100,
+      "dueDate": "2026-01-01",
+      "today": "2026-10-14",
+      "expect": false
+    },
+    {
+      "name": "no due date",
+      "status": "confirmed",
+      "outstanding": 100,
+      "dueDate": null,
+      "today": "2026-10-14",
+      "expect": false
+    }
+  ],
+  "lineAmounts": [
+    {
+      "quantityMilli": 1000,
+      "rateMinor": 12345,
+      "expect": 12345
+    },
+    {
+      "quantityMilli": 2500,
+      "rateMinor": 333,
+      "expect": 833
+    },
+    {
+      "quantityMilli": 1500,
+      "rateMinor": 1,
+      "expect": 2
+    },
+    {
+      "quantityMilli": 500,
+      "rateMinor": 1,
+      "expect": 1
+    },
+    {
+      "quantityMilli": 499,
+      "rateMinor": 1,
+      "expect": 0
+    },
+    {
+      "quantityMilli": 333,
+      "rateMinor": 3,
+      "expect": 1
+    },
+    {
+      "quantityMilli": 0,
+      "rateMinor": 999,
+      "expect": 0
+    }
+  ],
+  "searchTokens": [
+    {
+      "parts": [
+        "Cement bags",
+        "ACME Ltd"
+      ],
+      "expect": [
+        "a",
+        "ac",
+        "acm",
+        "acme",
+        "b",
+        "ba",
+        "bag",
+        "bags",
+        "c",
+        "ce",
+        "cem",
+        "ceme",
+        "cemen",
+        "cement",
+        "l",
+        "lt",
+        "ltd"
+      ]
+    },
+    {
+      "parts": [
+        "INV-2026/07",
+        null,
+        ""
+      ],
+      "expect": [
+        "0",
+        "07",
+        "2",
+        "20",
+        "202",
+        "2026",
+        "i",
+        "in",
+        "inv"
+      ]
+    },
+    {
+      "parts": [
+        "Électricité"
+      ],
+      "expect": [
+        "é",
+        "él",
+        "éle",
+        "élec",
+        "élect",
+        "électr",
+        "électri",
+        "électric",
+        "électrici",
+        "électricit",
+        "électricité"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,35 @@
+# Strict lints from very_good_analysis (a superset of flutter_lints).
+# Rule docs: https://dart.dev/lints
+include: package:very_good_analysis/analysis_options.yaml
+
+analyzer:
+  exclude:
+    # Generated code is not ours to lint.
+    - "**/*.g.dart"
+    - "**/*.gr.dart"
+    - "**/*.freezed.dart"
+    - "**/*.config.dart"
+    # Reference snapshots for the team, not part of the app. See examples/README.md.
+    - "examples/**"
+    - plugins/**
+    - build/**
+    - android/**
+    - ios/**
+
+
+    
+
+linter:
+  rules:
+    # Requires a doc comment on every public member. The codebase documents
+    # the non-obvious instead; enforcing this produces noise comments.
+    public_member_api_docs: false
+
+    # Catch-alls below guard I/O and parse boundaries (corrupt storage, bad
+    # payloads) where TypeError, an Error not an Exception, is an expected
+    # outcome of bad data. `on Exception` would let those crash the app again.
+    avoid_catches_without_on_clauses: false
+
+    # pubspec dependencies are grouped by purpose with explanatory comments;
+    # alphabetical order would destroy the grouping.
+    sort_pub_dependencies: false
