@@ -1,0 +1,88 @@
+name: Functions & rules
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "functions/**"
+      - "shared/**"
+      - "firestore.rules"
+      - "storage.rules"
+      - "firestore.indexes.json"
+      - "firebase.json"
+      - ".github/workflows/functions.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "functions/**"
+      - "shared/**"
+      - "firestore.rules"
+      - "storage.rules"
+      - "firestore.indexes.json"
+      - "firebase.json"
+      - ".github/workflows/functions.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: functions-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    working-directory: functions
+
+jobs:
+  build-and-unit-test:
+    name: Lint, build & unit test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run build
+      - run: npm test
+
+  emulator-test:
+    name: Rules & integration (emulators)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: build-and-unit-test
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Cache Firebase emulators
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/firebase/emulators
+          key: firebase-emulators-${{ runner.os }}-${{ hashFiles('firebase.json') }}
+          restore-keys: firebase-emulators-${{ runner.os }}-
+
+      - name: Install Firebase CLI
+        run: npm i -g firebase-tools
+
+      - run: npm ci
+
+      - name: Rules & integration tests
+        run: npm run test:emulator
