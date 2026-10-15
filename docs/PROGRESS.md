@@ -52,8 +52,21 @@ Reference conventions: `/Users/sreeragkm/Documents/projects/easify_crm_flutter`
        137 Dart tests pass, analyze clean. Firebase options are placeholders until
        `flutterfire configure` (stage 10); iOS needs REVERSED_CLIENT_ID URL scheme,
        Android needs SHA fingerprints, Apple sign-in capability + provider enabled.
-6. [ ] Businesses (create/switch/settings/members), categories, fields, parties, projects
-7. [ ] Transactions: drafts (offline), confirm, edit, cancel, search/filter
-8. [ ] Payments/refunds/credits, dashboard & reports, PDF documents
+6. [x] Businesses (create/switch/settings/members, templates, archive), categories
+       (reorder, archive, delete-if-unused), custom fields, parties, projects.
+       BusinessScopeCubit (selected business + live role), local-first config writes.
+7. [x] Transactions: offline drafts, confirm / confirm-as-paid, edit confirmed (version
+       checked), cancel, payments/refunds/credits with LedgerMath pre-checks, request-id
+       reuse on retry, search + filters (indexed query plan + device filtering),
+       detail with balance breakdown, settlements, linked refunds, audit, documents,
+       attachments. 413 Dart tests. Not yet exercised end to end on emulator/device.
+8. [~] Dashboard & Reports tabs wired (stats, receivables/payables, overdue, daily/weekly/
+       monthly series, category/project breakdown); document PDFs (invoice/bill/receipt,
+       VOID watermark), DocumentCubit + actions sheet — to be wired from transaction
+       detail in stage 7. Settlement UI (payment/refund/credit) is part of stage 7.
 9. [ ] UI polish + animations, tests, error handling
-10. [ ] `flutterfire configure` against busineedger-ab7a1, device verification
+10. [~] `flutterfire configure` done (iOS + Android apps registered, prod uses the same
+       project for now); iOS simulator build passes. Pending console steps: create
+       Firestore DB (asia-south1), enable Google + Apple auth, Blaze, Storage, Android
+       SHA fingerprints; then re-run configure for the iOS CLIENT_ID / URL scheme,
+       deploy rules, indexes and functions. Device verification.
