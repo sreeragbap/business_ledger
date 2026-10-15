@@ -28,10 +28,8 @@
 	<string>Business Ledger uses Face ID to unlock the app when app lock is on.</string>
 	<key>UIUserInterfaceStyle</key>
 	<string>Dark</string>
-	<!--
-	Google Sign-In: once `flutterfire configure` has produced
-	GoogleService-Info.plist, add its REVERSED_CLIENT_ID as a URL scheme:
-
+	<!-- Google Sign-In: REVERSED_CLIENT_ID from GoogleService-Info.plist.
+	     Update it whenever `flutterfire configure` changes the iOS client. -->
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>
@@ -39,11 +37,14 @@
 			<string>Editor</string>
 			<key>CFBundleURLSchemes</key>
 			<array>
-				<string>com.googleusercontent.apps.REPLACE_WITH_REVERSED_CLIENT_ID</string>
+				<string>com.googleusercontent.apps.427969628316-5cr1vuevknlicnlj7esepqjs8i8v214e</string>
 			</array>
 		</dict>
 	</array>
-	-->
+	<key>NSCameraUsageDescription</key>
+	<string>Take a photo of a bill or receipt to attach it to a transaction.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Choose a photo of a bill or receipt to attach it to a transaction.</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>UIApplicationSceneManifest</key>

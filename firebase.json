@@ -10,16 +10,62 @@
     {
       "source": "functions",
       "codebase": "default",
-      "ignore": ["node_modules", ".git", "test", "*.log"],
-      "predeploy": ["npm --prefix \"$RESOURCE_DIR\" run build"]
+      "ignore": [
+        "node_modules",
+        ".git",
+        "test",
+        "*.log"
+      ],
+      "predeploy": [
+        "npm --prefix \"$RESOURCE_DIR\" run build"
+      ]
     }
   ],
   "emulators": {
-    "auth": {"port": 9099},
-    "functions": {"port": 5001},
-    "firestore": {"port": 8080},
-    "storage": {"port": 9199},
-    "ui": {"enabled": true, "port": 4000},
+    "auth": {
+      "port": 9099
+    },
+    "functions": {
+      "port": 5001
+    },
+    "firestore": {
+      "port": 8080
+    },
+    "storage": {
+      "port": 9199
+    },
+    "ui": {
+      "enabled": true,
+      "port": 4000
+    },
     "singleProjectMode": true
+  },
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "busineedger-ab7a1",
+          "appId": "1:427969628316:android:34e5ae516717e5b6f6c559",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "ios": {
+        "default": {
+          "projectId": "busineedger-ab7a1",
+          "appId": "1:427969628316:ios:bf6fd68ba8c0dfa2f6c559",
+          "uploadDebugSymbols": true,
+          "fileOutput": "ios/Runner/GoogleService-Info.plist"
+        }
+      },
+      "dart": {
+        "lib/app/firebase_options_dev.dart": {
+          "projectId": "busineedger-ab7a1",
+          "configurations": {
+            "android": "1:427969628316:android:34e5ae516717e5b6f6c559",
+            "ios": "1:427969628316:ios:bf6fd68ba8c0dfa2f6c559"
+          }
+        }
+      }
+    }
   }
 }
