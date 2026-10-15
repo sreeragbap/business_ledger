@@ -1,9 +1,9 @@
 import 'dart:async';
 
 import 'package:auto_route/auto_route.dart';
+import 'package:business_ledger/app/app_config.dart';
 import 'package:business_ledger/core/constants/app_strings.dart';
 import 'package:business_ledger/core/di/injection.dart';
-import 'package:business_ledger/core/router/app_router.dart';
 import 'package:business_ledger/core/theme/app_colors.dart';
 import 'package:business_ledger/core/theme/app_spacing.dart';
 import 'package:business_ledger/core/widgets/app_fade_in.dart';
@@ -12,6 +12,8 @@ import 'package:business_ledger/core/widgets/app_snack_bar.dart';
 import 'package:business_ledger/features/auth/domain/const/social_sign_in_method.dart';
 import 'package:business_ledger/features/auth/logic/sign_in_cubit/sign_in_cubit.dart';
 import 'package:business_ledger/features/auth/widgets/social_sign_in_button.dart';
+import 'package:business_ledger/features/business/logic/business_landing.dart';
+import 'package:business_ledger/features/business/logic/business_scope_cubit/business_scope_cubit.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -35,8 +37,11 @@ class SignInScreen extends StatelessWidget implements AutoRouteWrapper {
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
     final methods = [
-      if (_offersApple) SocialSignInMethod.apple,
-      SocialSignInMethod.google,
+      if (AppConfig.useEmulator) SocialSignInMethod.emulatorTestAccount,
+      if (!AppConfig.usingDemoProject) ...[
+        if (_offersApple) SocialSignInMethod.apple,
+        SocialSignInMethod.google,
+      ],
     ];
 
     return BlocListener<SignInCubit, SignInState>(
@@ -44,7 +49,11 @@ class SignInScreen extends StatelessWidget implements AutoRouteWrapper {
       listener: (context, state) {
         if (state.status.isSuccess) {
           // replaceAll, so back cannot return here.
-          unawaited(context.router.replaceAll([const HomeShellRoute()]));
+          final router = context.router;
+          final scope = context.read<BusinessScopeCubit>();
+          unawaited(
+            businessLanding(scope).then((route) => router.replaceAll([route])),
+          );
         } else if (state.status.isFailure) {
           showAppSnackBar(
             context,

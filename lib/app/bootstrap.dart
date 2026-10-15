@@ -26,7 +26,7 @@ Future<void> bootstrap(Flavor flavor) async {
       WidgetsFlutterBinding.ensureInitialized();
       AppConfig.configure(flavor);
 
-      final FirebaseOptions options;
+      FirebaseOptions options;
       try {
         options = AppConfig.firebaseOptions;
         // The placeholder options throw an Error by design (it is a setup
@@ -34,17 +34,25 @@ Future<void> bootstrap(Flavor flavor) async {
         // turned into something visible.
         // ignore: avoid_catching_errors
       } on UnimplementedError catch (error) {
-        // The placeholder options file is still in place. Say so on screen
-        // instead of crashing to a blank one.
-        runApp(_ConfigurationErrorApp(message: '${error.message}'));
-        return;
+        if (!AppConfig.useEmulator) {
+          // The placeholder options file is still in place. Say so on screen
+          // instead of crashing to a blank one.
+          runApp(_ConfigurationErrorApp(message: '${error.message}'));
+          return;
+        }
+        // Emulator run before `flutterfire configure`: a demo project is
+        // enough, since nothing leaves the machine.
+        AppConfig.usingDemoProject = true;
+        options = AppConfig.demoOptions;
       }
 
       await Firebase.initializeApp(options: options);
 
-      final crashlytics = CrashlyticsService();
-      await crashlytics.initialise();
-      crashlytics.installErrorHandlers();
+      if (!AppConfig.usingDemoProject) {
+        final crashlytics = CrashlyticsService();
+        await crashlytics.initialise();
+        crashlytics.installErrorHandlers();
+      }
 
       await FirebaseSetup.configure();
       await configureDependencies();

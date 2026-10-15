@@ -43,6 +43,7 @@ class AuthService implements AuthRepository {
       final credential = switch (method) {
         SocialSignInMethod.google => await _signInWithGoogle(),
         SocialSignInMethod.apple => await _signInWithApple(),
+        SocialSignInMethod.emulatorTestAccount => await _signInToEmulator(),
       };
       final user = credential.user;
       if (user == null) return Failure(AppException.unknown('No user'));
@@ -92,6 +93,19 @@ class AuthService implements AuthRepository {
   // --- Google ----------------------------------------------------------------
 
   Future<UserCredential> _signInWithGoogle() async {
+    // On iOS the Google SDK aborts the whole app (an uncatchable native
+    // exception) when it has no client id / URL scheme. That is the state
+    // until Google is enabled in Firebase Auth and `flutterfire configure`
+    // is re-run, so refuse here with a message instead.
+    if (defaultTargetPlatform == TargetPlatform.iOS &&
+        (AppConfig.firebaseOptions.iosClientId?.isEmpty ?? true)) {
+      throw const AppException(
+        kind: AppErrorKind.unknown,
+        message:
+            'Google sign-in is not set up for iOS yet. Enable Google in '
+            'Firebase Authentication, then re-run flutterfire configure.',
+      );
+    }
     await (_googleReady ??= _google.initialize(
       // Android reads its client from google-services.json; iOS needs it
       // passed. flutterfire writes it into the options as `iosClientId`.
@@ -119,11 +133,49 @@ class AuthService implements AuthRepository {
     GoogleSignInExceptionCode.canceled => const AppException.cancelled(),
     _ => AppException(
       kind: AppErrorKind.unknown,
-      message: 'Google sign-in failed. Please try again.',
+      // The code says what is misconfigured (e.g. clientConfigurationError);
+      // useful while setting up, noise for users.
+      message: kDebugMode
+          ? 'Google sign-in failed (${error.code.name}): '
+                '${error.description ?? 'no details'}'
+          : 'Google sign-in failed. Please try again.',
       code: error.code.name,
       cause: error.description,
     ),
   };
+
+  // --- Emulator test account -----------------------------------------------
+
+  static const _testEmail = 'test@example.com';
+  static const _testPassword = 'test-password';
+
+  /// Signs in to the Auth emulator's test account, creating it on first use.
+  Future<UserCredential> _signInToEmulator() async {
+    if (!AppConfig.useEmulator) {
+      throw const AppException(
+        kind: AppErrorKind.unknown,
+        message: 'Test accounts exist only on the local emulators.',
+      );
+    }
+    try {
+      return await _auth.signInWithEmailAndPassword(
+        email: _testEmail,
+        password: _testPassword,
+      );
+    } on FirebaseAuthException catch (error) {
+      if (error.code != 'user-not-found' &&
+          error.code != 'invalid-credential') {
+        rethrow;
+      }
+      final credential = await _auth.createUserWithEmailAndPassword(
+        email: _testEmail,
+        password: _testPassword,
+      );
+      await credential.user?.updateDisplayName('Test User');
+      await credential.user?.reload();
+      return credential;
+    }
+  }
 
   // --- Apple -----------------------------------------------------------------
 

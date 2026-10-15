@@ -92,6 +92,11 @@ class _ProviderMark extends StatelessWidget {
     final size = 22.r;
     return switch (method) {
       SocialSignInMethod.apple => Icon(Icons.apple, size: size, color: color),
+      SocialSignInMethod.emulatorTestAccount => Icon(
+        Icons.science_outlined,
+        size: size,
+        color: color,
+      ),
       // No brand asset is bundled; a lettermark keeps the button honest
       // without shipping Google's logo before the asset pass.
       SocialSignInMethod.google => Container(

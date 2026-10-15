@@ -39,17 +39,31 @@ class CrashlyticsService {
     };
   }
 
+  /// The emulator demo project has no Crashlytics app behind it.
+  bool get _enabled => !AppConfig.usingDemoProject;
+
   Future<void> recordError(
     Object error,
     StackTrace? stack, {
     String? reason,
     bool fatal = false,
-  }) => _crashlytics.recordError(error, stack, reason: reason, fatal: fatal);
+  }) async {
+    if (!_enabled) {
+      debugPrint('[crashlytics:off] $reason: $error');
+      return;
+    }
+    await _crashlytics.recordError(error, stack, reason: reason, fatal: fatal);
+  }
 
-  Future<void> log(String message) => _crashlytics.log(message);
+  Future<void> log(String message) async {
+    if (_enabled) await _crashlytics.log(message);
+  }
 
-  Future<void> setUserIdentifier(String id) =>
-      _crashlytics.setUserIdentifier(id);
+  Future<void> setUserIdentifier(String id) async {
+    if (_enabled) await _crashlytics.setUserIdentifier(id);
+  }
 
-  Future<void> clearUserIdentifier() => _crashlytics.setUserIdentifier('');
+  Future<void> clearUserIdentifier() async {
+    if (_enabled) await _crashlytics.setUserIdentifier('');
+  }
 }

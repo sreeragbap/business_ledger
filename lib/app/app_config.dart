@@ -64,4 +64,22 @@ abstract final class AppConfig {
   static const int firestoreEmulatorPort = 8080;
   static const int functionsEmulatorPort = 5001;
   static const int storageEmulatorPort = 9199;
+
+  /// Project id for emulator runs before `flutterfire configure`. The
+  /// `demo-` prefix tells the emulators never to reach a real project.
+  static const String demoProjectId = 'demo-business-ledger';
+
+  /// Set by `bootstrap()` when running on [demoOptions]: no real Firebase app
+  /// exists, so Crashlytics and Google/Apple sign-in are unavailable.
+  static bool usingDemoProject = false;
+
+  static FirebaseOptions get demoOptions => FirebaseOptions(
+    apiKey: 'demo-api-key',
+    appId: defaultTargetPlatform == TargetPlatform.android
+        ? '1:000000000000:android:0000000000000000'
+        : '1:000000000000:ios:0000000000000000',
+    messagingSenderId: '000000000000',
+    projectId: demoProjectId,
+    storageBucket: '$demoProjectId.appspot.com',
+  );
 }
