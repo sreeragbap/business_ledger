@@ -75,6 +75,19 @@ abstract final class AppColors {
   /// at low opacity, so it reads as that colour without competing with text.
   static Color tint(Color colour) => colour.withValues(alpha: 0.14);
 
+  // --- Swatches -------------------------------------------------------------
+  // User-chosen colours for categories (keys shared with the seeded
+  // templates: `functions/src/templates.ts`). Each passes AA as text on every
+  // surface, so a swatch can colour an icon or a label. Deliberately not the
+  // money colours: a green category is not "income".
+  static const Color swatchGreen = Color(0xFF6EE7A0);
+  static const Color swatchTeal = Color(0xFF5EEAD4);
+  static const Color swatchAmber = Color(0xFFFCD34D);
+  static const Color swatchPurple = Color(0xFFC4B5FD);
+  static const Color swatchBlue = Color(0xFF7DB8FB);
+  static const Color swatchGrey = Color(0xFFA9B0BB);
+  static const Color swatchOrange = Color(0xFFFDA766);
+
   // --- Brand marks (third-party) ------------------------------------------
   static const Color googleBlue = Color(0xFF4285F4);
 

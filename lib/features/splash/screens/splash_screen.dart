@@ -8,11 +8,14 @@ import 'package:business_ledger/core/widgets/app_loader.dart';
 import 'package:business_ledger/core/widgets/app_logo.dart';
 import 'package:business_ledger/features/app_lock/logic/app_lock_cubit/app_lock_cubit.dart';
 import 'package:business_ledger/features/auth/domain/repository/auth_repository.dart';
+import 'package:business_ledger/features/business/logic/business_landing.dart';
+import 'package:business_ledger/features/business/logic/business_scope_cubit/business_scope_cubit.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 
-/// Decides where a cold start lands: sign-in, or the home shell (under the
-/// lock screen when app lock is on).
+/// Decides where a cold start lands: sign-in, the home shell on the last
+/// business, or the business picker (under the lock screen when app lock is
+/// on).
 @RoutePage()
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -46,8 +49,10 @@ class _SplashScreenState extends State<SplashScreen> {
     }
 
     final lock = getIt<AppLockCubit>()..lockOnColdStart();
+    final landing = await businessLanding(getIt<BusinessScopeCubit>());
+    if (!mounted) return;
     await router.replaceAll([
-      const HomeShellRoute(),
+      landing,
       if (lock.state.locked) const LockRoute(),
     ]);
   }

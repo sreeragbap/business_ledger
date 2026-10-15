@@ -30,6 +30,13 @@ void main() {
     'info': AppColors.info,
     'error': AppColors.error,
     'refund': AppColors.refund,
+    'swatchGreen': AppColors.swatchGreen,
+    'swatchTeal': AppColors.swatchTeal,
+    'swatchAmber': AppColors.swatchAmber,
+    'swatchPurple': AppColors.swatchPurple,
+    'swatchBlue': AppColors.swatchBlue,
+    'swatchGrey': AppColors.swatchGrey,
+    'swatchOrange': AppColors.swatchOrange,
   };
 
   for (final surface in surfaces.entries) {

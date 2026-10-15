@@ -2,13 +2,17 @@ import 'dart:async';
 
 import 'package:business_ledger/app/app_config.dart';
 import 'package:business_ledger/core/di/injection.dart';
+import 'package:business_ledger/core/domain/app_exception.dart';
+import 'package:business_ledger/core/firebase/local_first_writer.dart';
 import 'package:business_ledger/core/logic/connectivity_cubit.dart';
 import 'package:business_ledger/core/responsive/app_screen_util.dart';
 import 'package:business_ledger/core/router/app_router.dart';
 import 'package:business_ledger/core/theme/app_theme.dart';
+import 'package:business_ledger/core/widgets/app_snack_bar.dart';
 import 'package:business_ledger/core/widgets/offline_banner.dart';
 import 'package:business_ledger/features/app_lock/logic/app_lock_cubit/app_lock_cubit.dart';
 import 'package:business_ledger/features/auth/logic/auth_cubit/auth_cubit.dart';
+import 'package:business_ledger/features/business/logic/business_scope_cubit/business_scope_cubit.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -74,6 +78,10 @@ class _AppState extends State<App> {
         BlocProvider<ConnectivityCubit>.value(
           value: getIt<ConnectivityCubit>(),
         ),
+        // The current business and role, for every screen.
+        BlocProvider<BusinessScopeCubit>.value(
+          value: getIt<BusinessScopeCubit>(),
+        ),
       ],
       child: MultiBlocListener(
         listeners: [
@@ -97,8 +105,9 @@ class _AppState extends State<App> {
               darkTheme: AppTheme.dark,
               themeMode: ThemeMode.dark,
               routerConfig: _router.config(),
-              builder: (context, child) =>
-                  _OfflineFrame(child: child ?? const SizedBox.shrink()),
+              builder: (context, child) => _LateWriteFailures(
+                child: _OfflineFrame(child: child ?? const SizedBox.shrink()),
+              ),
             ),
           ),
         ),
@@ -135,4 +144,42 @@ class _OfflineFrame extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Shows a snack bar for configuration writes that the UI already reported
+/// as saved (they were queued offline) but the server later refused. Sits
+/// inside `MaterialApp`, below its `ScaffoldMessenger`.
+class _LateWriteFailures extends StatefulWidget {
+  const _LateWriteFailures({required this.child});
+
+  final Widget child;
+
+  @override
+  State<_LateWriteFailures> createState() => _LateWriteFailuresState();
+}
+
+class _LateWriteFailuresState extends State<_LateWriteFailures> {
+  StreamSubscription<AppException>? _subscription;
+
+  @override
+  void initState() {
+    super.initState();
+    _subscription = getIt<LocalFirstWriter>().lateFailures.listen((error) {
+      if (!mounted) return;
+      showAppSnackBar(
+        context,
+        "A change made offline couldn't be saved: ${error.message}",
+        kind: AppSnackBarKind.error,
+      );
+    });
+  }
+
+  @override
+  void dispose() {
+    unawaited(_subscription?.cancel());
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
 }
