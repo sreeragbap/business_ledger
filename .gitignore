@@ -48,3 +48,6 @@ app.*.map.json
 .firebase/
 *-debug.log
 firebase-debug.*.log
+
+# Claude Code agent worktrees
+.claude/worktrees/
