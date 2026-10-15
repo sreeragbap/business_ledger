@@ -60,6 +60,30 @@ class AppRouter extends RootStackRouter {
       duration: AppTransitions.duration,
     ),
 
+    CustomRoute<void>(
+      page: CreateBusinessRoute.page,
+      path: RoutePaths.createBusiness,
+      guards: <AutoRouteGuard>[_authGuard],
+    ),
+    // Business configuration (pushed from settings) and transactions
+    // (pushed from the tabs), over the shell. Each reads the current
+    // business from `BusinessScopeCubit`.
+    for (final (page, path) in <(PageInfo, String)>[
+      (BusinessDetailsRoute.page, RoutePaths.businessDetails),
+      (MembersRoute.page, RoutePaths.members),
+      (CategoriesRoute.page, RoutePaths.categories),
+      (CustomFieldsRoute.page, RoutePaths.customFields),
+      (PartiesRoute.page, RoutePaths.parties),
+      (ProjectsRoute.page, RoutePaths.projects),
+      (TransactionListRoute.page, RoutePaths.transactionList),
+      (TransactionDetailRoute.page, RoutePaths.transactionDetail),
+      (TransactionFormRoute.page, RoutePaths.transactionForm),
+    ])
+      CustomRoute<void>(
+        page: page,
+        path: path,
+        guards: <AutoRouteGuard>[_authGuard],
+      ),
     // The tabbed shell. Everything inside needs a session, so the guard sits
     // on the parent rather than on each tab.
     CustomRoute<void>(

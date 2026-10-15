@@ -12,6 +12,24 @@ abstract final class RoutePaths {
   static const String businessPicker = '/businesses';
   static const String home = '/home';
 
+  // --- Business (pushed over the shell) -----------------------------------
+  static const String createBusiness = '/businesses/new';
+  static const String businessDetails = '/business/details';
+  static const String members = '/business/members';
+  static const String categories = '/business/categories';
+  static const String customFields = '/business/fields';
+  static const String parties = '/business/parties';
+  static const String projects = '/business/projects';
+
+  // --- Transactions (pushed over the shell) --------------------------------
+  /// A filtered list (the dashboard's "See all").
+  static const String transactionList = '/transactions';
+  static const String transactionDetail = '/transactions/:transactionId';
+
+  /// Create or edit; not under `/transactions/` so it never matches the
+  /// detail path.
+  static const String transactionForm = '/transaction-form';
+
   // --- Tabs (segments, relative to [home]) ----------------------------------
   static const String dashboard = 'dashboard';
   static const String transactions = 'transactions';
