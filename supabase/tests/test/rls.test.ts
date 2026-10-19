@@ -263,6 +263,17 @@ describe("configuration", () => {
     expect(await editor.insert("projects", project)).toHaveLength(1);
     await expectNoWrite(outsider.update("projects", {name: "Mine"}, {id: project.id}));
   });
+
+  it("projects keep an optional description (≤ 500 characters)", async () => {
+    const project = {id: randomUUID(), business_id: B, name: "Villa", code: "V1", description: "Two floors"};
+    const [created] = await editor.insert("projects", project);
+    expect(created).toMatchObject({description: "Two floors"});
+    const [updated] = await editor.update("projects", {description: ""}, {id: project.id});
+    expect(updated).toMatchObject({description: ""});
+    const [plain] = await editor.insert("projects", {id: randomUUID(), business_id: B, name: "Plain"});
+    expect(plain).toMatchObject({description: ""});
+    await expectNoWrite(editor.update("projects", {description: "x".repeat(501)}, {id: project.id}));
+  });
 });
 
 describe("profiles", () => {

@@ -21,6 +21,7 @@ supabase/
     20261019120400_rpc_support.sql  idempotency, roles, audit, stats apply, templates, currencies
     20261019120500_rpc_business.sql create_business, add/update/remove member, delete_category
     20261019120600_rpc_ledger.sql   confirm / edit / cancel / settle, issue_document, final grants
+    20261020090000_project_description.sql  projects.description (Phase B: the app's project form has one)
   tests/                       vitest + PGlite (in-process Postgres): no Docker needed
     supabase_stub.sql          roles, auth.jwt(), default grants Supabase provides (tests only)
     test/ledger_cases.test.ts  shared/ledger_cases.json against the SQL rules
@@ -99,7 +100,7 @@ settlement `balance_after`, audit `before`/`after`, and RPC results.
 | `categories` | `id` uuid (client) | name, kind, icon, colour, field_ids uuid[], sort_order, archived; soft-deleted only by `delete_category` |
 | `custom_fields` | `id` uuid (client) | label, type, options[], required, sort_order, archived |
 | `parties` | `id` uuid (client) | name, kind, phone, email, address, sort_order, archived |
-| `projects` | `id` uuid (client) | name, code, sort_order, archived |
+| `projects` | `id` uuid (client) | name, code, description (≤ 500, added by `20261020090000_project_description.sql`), sort_order, archived |
 | `transactions` | `id` uuid (client) | ARCHITECTURE §4: type, direction, status, category/party/project id + name snapshot, description, reference, notes, payment_method, date, due_date, line_items, total/paid/refunded/credited/effective/outstanding `_minor`, payment_status, is_open, custom_fields, linked_transaction_id, link_kind, settlement_id, search_tokens text[], version, created_by, confirmed_*, cancelled_*, cancel_reason, updated_by, deleted_at (drafts) |
 | `settlements` | (transaction_id, id) | id = request id; kind, amount_minor, date, method, note, balance_after, linked_transaction_id, voided |
 | `documents` | (business_id, id) | id = `<type>-<transactionId>-<settlementId or main>`; number unique per business+type; snapshot; voided |
