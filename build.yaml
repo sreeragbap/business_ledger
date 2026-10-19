@@ -1,0 +1,9 @@
+targets:
+  $default:
+    builders:
+      drift_dev:
+        options:
+          # Data classes serialise with the SQL (= Postgres) column names, so
+          # a row pulled from Supabase and a row read from SQLite have the
+          # same snake_case shape (`lib/core/database/row_codec.dart`).
+          use_sql_column_name_as_json_key: true

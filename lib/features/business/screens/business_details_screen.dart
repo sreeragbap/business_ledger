@@ -26,7 +26,7 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 /// and the contact details printed on documents. Admins edit; everyone else
 /// sees the same screen read-only. The owner can archive the business.
 ///
-/// Saving is a direct Firestore update and works offline.
+/// Saving is local-first (queued in the outbox) and works offline.
 @RoutePage()
 class BusinessDetailsScreen extends StatelessWidget
     implements AutoRouteWrapper {

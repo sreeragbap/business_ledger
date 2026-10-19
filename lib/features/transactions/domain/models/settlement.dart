@@ -1,20 +1,17 @@
-import 'package:business_ledger/core/firebase/firestore_read.dart';
-import 'package:business_ledger/core/firebase/firestore_refs.dart';
+import 'package:business_ledger/core/domain/json_read.dart';
 import 'package:business_ledger/core/ledger/ledger_enums.dart';
 import 'package:business_ledger/core/ledger/ledger_math.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:equatable/equatable.dart';
 
-/// `transactions/{tid}/settlements/{requestId}`: one payment, refund or
-/// credit, written only by `recordSettlement` (or `confirmTransaction` with
-/// `settleNow`). The id is the request id, so a retry cannot duplicate it.
+/// A `settlements` row: one payment, refund or credit, written only by
+/// `record_settlement` (or `confirm_transaction` with `p_settle_now`). The
+/// id is the request id, so a retry cannot duplicate it.
 class Settlement extends Equatable {
   const Settlement({
     required this.id,
     required this.kind,
     required this.amountMinor,
     required this.date,
-    this.dateTs,
     this.method = '',
     this.note = '',
     this.balanceAfter,
@@ -26,8 +23,9 @@ class Settlement extends Equatable {
     this.voided = false,
   });
 
-  factory Settlement.fromFirestore(DocumentSnapshot<JsonMap> doc) =>
-      Settlement.fromMap(doc.id, doc.data() ?? const {});
+  /// A Postgres row (snake_case; `balance_after` keeps camelCase keys).
+  factory Settlement.fromRow(Map<String, dynamic> row) =>
+      Settlement.fromMap(row.readString('id'), RowKeys.camelMap(row));
 
   factory Settlement.fromMap(String id, Map<String, dynamic> map) {
     final after = map.readMap('balanceAfter');
@@ -37,7 +35,6 @@ class Settlement extends Equatable {
       kind: SettlementKind.fromKey(map.readOptionalString('kind')),
       amountMinor: map.readInt('amountMinor'),
       date: map.readString('date'),
-      dateTs: map.readDate('dateTs'),
       method: map.readString('method'),
       note: map.readString('note'),
       balanceAfter: after.isEmpty
@@ -63,7 +60,6 @@ class Settlement extends Equatable {
 
   /// `yyyy-MM-dd`: when the money moved, not the transaction date.
   final String date;
-  final DateTime? dateTs;
   final String method;
   final String note;
 
@@ -84,7 +80,6 @@ class Settlement extends Equatable {
     kind,
     amountMinor,
     date,
-    dateTs,
     method,
     note,
     balanceAfter,

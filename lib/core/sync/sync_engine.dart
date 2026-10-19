@@ -1,15 +1,17 @@
 import 'dart:async';
 
+import 'package:business_ledger/core/database/local_store.dart';
 import 'package:business_ledger/core/domain/app_exception.dart';
 import 'package:business_ledger/core/domain/app_result.dart';
 import 'package:business_ledger/core/firebase/connectivity_service.dart';
-import 'package:business_ledger/core/sync/firestore_network.dart';
+import 'package:business_ledger/core/sync/cloud_availability.dart';
 import 'package:business_ledger/core/sync/outbox.dart';
 import 'package:business_ledger/core/sync/outbox_entry.dart';
 import 'package:business_ledger/core/sync/outbox_executor.dart';
-import 'package:business_ledger/core/sync/pending_writes_tracker.dart';
+import 'package:business_ledger/core/sync/profile_sync.dart';
 import 'package:business_ledger/core/sync/sync_error_policy.dart';
 import 'package:business_ledger/core/sync/sync_identity.dart';
+import 'package:business_ledger/core/sync/sync_puller.dart';
 import 'package:business_ledger/core/sync/sync_settings.dart';
 import 'package:business_ledger/core/sync/sync_status.dart';
 import 'package:equatable/equatable.dart';
@@ -17,7 +19,7 @@ import 'package:injectable/injectable.dart';
 import 'package:rxdart/rxdart.dart';
 
 /// Schedules `run` after `delay`. Injected so tests can see (and fire)
-/// the backoff timers.
+/// the backoff and pull timers.
 typedef SyncTimerFactory = Timer Function(Duration delay, void Function() run);
 
 enum SyncEventType { applied, failed }
@@ -34,52 +36,63 @@ class SyncEvent extends Equatable {
   List<Object?> get props => [type, entry, error];
 }
 
-/// Replays the outbox (ARCHITECTURE §2, Offline behaviour).
+/// Keeps this device and Supabase in step (ARCHITECTURE §2, Offline
+/// behaviour). Runs while a user is signed in, Cloud sync is on and the
+/// device is online.
 ///
-/// Runs while a user is signed in, Cloud sync is on and the device is
-/// online; sends that user's entries oldest first, one at a time:
+/// **Push.** Sends that user's outbox entries oldest first, one at a time:
+/// row writes (drafts, configuration, business settings) through PostgREST
+/// and money actions through their RPCs. One FIFO queue, so a draft's
+/// upsert always lands before the confirm queued after it.
 ///
-/// * before each, waits (with a timeout) for Firestore's own queued writes,
-///   so a draft saved offline is on the server before its confirm reads it;
-/// * success removes the entry and chains the version of later edits to
-///   the same transaction;
+/// * success removes the entry, clears the rows' `local_pending` mark (when
+///   nothing else is queued for them) and chains the version of later edits
+///   to the same transaction;
 /// * a definitive refusal marks it failed and holds back later entries for
 ///   the same transaction (they probably depend on it), not others;
 /// * a transient failure keeps it pending with exponential backoff, and a
 ///   reconnect or "Sync now" retries at once.
+///
+/// **Pull** (`SyncPuller`): on start, on sign-in, on reconnect or sync
+/// switched on, after every push that applied something, on "Sync now" and
+/// pull-to-refresh ([refresh]), and every [defaultPullInterval] while the
+/// app is in the foreground.
 @lazySingleton
 class SyncEngine {
   SyncEngine(
     this._outbox,
     this._executor,
-    this._network,
     this._connectivity,
     this._settings,
     this._identity,
-    this._writes, {
+    this._puller,
+    this._store,
+    this._profiles, {
     @ignoreParam DateTime Function()? now,
     @ignoreParam SyncTimerFactory? timer,
-    @ignoreParam Duration? pendingWritesTimeout,
-    @ignoreParam Duration? probeGrace,
+    @ignoreParam SyncTimerFactory? pullTimer,
+    @ignoreParam Duration? pullInterval,
   }) : _now = now ?? DateTime.now,
        _timerFactory = timer ?? Timer.new,
-       _pendingWritesTimeout = pendingWritesTimeout ?? defaultWritesTimeout,
-       _probeGrace = probeGrace ?? const Duration(seconds: 2);
+       _pullTimerFactory = pullTimer ?? Timer.new,
+       _pullInterval = pullInterval ?? defaultPullInterval;
 
   final Outbox _outbox;
   final OutboxExecutor _executor;
-  final FirestoreNetwork _network;
   final ConnectivityService _connectivity;
   final SyncSettings _settings;
   final SyncIdentity _identity;
-  final PendingWritesTracker _writes;
+  final SyncPuller _puller;
+  final LocalStore _store;
+  final ProfileSync _profiles;
   final DateTime Function() _now;
   final SyncTimerFactory _timerFactory;
-  final Duration _pendingWritesTimeout;
-  final Duration _probeGrace;
+  final SyncTimerFactory _pullTimerFactory;
+  final Duration _pullInterval;
 
-  /// How long a replay waits for local Firestore writes to reach the server.
-  static const Duration defaultWritesTimeout = Duration(seconds: 20);
+  /// How often the foreground app looks for other devices' changes.
+  /// (Supabase Realtime could replace this poll later.)
+  static const Duration defaultPullInterval = Duration(seconds: 60);
 
   final BehaviorSubject<SyncStatus> _status =
       BehaviorSubject<SyncStatus>.seeded(const SyncStatus());
@@ -91,18 +104,19 @@ class SyncEngine {
   String? _uid;
   bool _online = true;
   bool _enabled = true;
+  bool _foreground = true;
   DateTime? _lastSyncedAt;
 
   bool _running = false;
   bool _again = false;
   bool _busy = false;
+  bool _pullWanted = false;
   Timer? _timer;
+  Timer? _pullTimer;
+  final List<Completer<AppResult<void>>> _pullWaiters = [];
 
-  /// Waiting for Firestore's queue timed out; retry not before this.
-  DateTime? _writesRetryAt;
-  int _writesFailures = 0;
-  bool _probing = false;
-  bool _probeOutstanding = false;
+  /// The local store is being claimed for a newly signed-in user.
+  Future<void> _claimed = Future<void>.value();
 
   SyncStatus get status => _status.value;
 
@@ -137,11 +151,15 @@ class SyncEngine {
     _enabled = _settings.enabled;
     _lastSyncedAt = _settings.lastSyncedAt;
     await _outbox.load();
+    final uid = _uid;
+    if (uid != null) _claimed = _claim(uid);
     _subscriptions
       ..add(
         _identity.uidChanges.listen((uid) {
           if (uid == _uid) return;
           _uid = uid;
+          if (uid != null) _claimed = _claim(uid);
+          _pullWanted = uid != null;
           _emitStatus();
           _kick();
         }),
@@ -161,11 +179,19 @@ class SyncEngine {
           _emitStatus();
           _kick();
         }),
-      )
-      ..add(_writes.changes.listen((_) => _emitStatus()));
+      );
+    _pullWanted = true;
     _emitStatus();
-    _probe();
     _kick();
+  }
+
+  /// A newly signed-in user's data must never mix with the last one's.
+  Future<void> _claim(String uid) async {
+    try {
+      await _store.claimFor(uid);
+    } catch (_) {
+      // The store is unusable; the pull will fail and say so.
+    }
   }
 
   void _onAvailability({bool? online, bool? enabled}) {
@@ -174,21 +200,58 @@ class SyncEngine {
     _enabled = enabled ?? _enabled;
     _emitStatus();
     if (!could && _canSend) {
-      // Back online / switched on: whatever was backing off goes now.
-      _probe();
+      // Back online / switched on: whatever was backing off goes now, and
+      // whatever changed elsewhere meanwhile comes down.
+      _pullWanted = true;
       unawaited(_resetBackoff().then((_) => _kick()));
       return;
     }
     _kick();
   }
 
+  /// The app came to the foreground (or left it). Pulls at once on return,
+  /// then every interval while it stays.
+  void setForeground({required bool foreground}) {
+    if (foreground == _foreground) return;
+    _foreground = foreground;
+    if (foreground) {
+      _pullWanted = true;
+      _kick();
+    } else {
+      _pullTimer?.cancel();
+      _pullTimer = null;
+    }
+  }
+
   // --- User actions ----------------------------------------------------------
 
-  /// Retries everything waiting now, ignoring backoff.
+  /// Retries everything waiting now, ignoring backoff, then pulls.
   Future<void> syncNow() async {
-    _probe();
     await _resetBackoff();
+    _pullWanted = true;
     _kick();
+  }
+
+  /// Pull-to-refresh: pushes what waits, then pulls. Completes when the
+  /// pull has finished (or at once, unavailable, when the engine cannot
+  /// reach the server).
+  Future<AppResult<void>> refresh() {
+    if (!_started || !_canSend) {
+      return Future.value(
+        Failure(
+          _uid == null
+              ? CloudAvailability.signedOut
+              : _enabled
+              ? const AppException.offline()
+              : const AppException.syncOff(),
+        ),
+      );
+    }
+    final waiter = Completer<AppResult<void>>();
+    _pullWaiters.add(waiter);
+    _pullWanted = true;
+    _kick();
+    return waiter.future;
   }
 
   /// Puts a failed entry back in the queue, with the same requestId.
@@ -218,6 +281,10 @@ class SyncEngine {
 
   /// Drops [id] (and, with [includeDependents], [dependentsOf] it) from the
   /// queue without sending. Returns what was removed.
+  ///
+  /// A discarded row write leaves the local row out of step with the
+  /// server, so it is dropped and its table pulled again from the start:
+  /// the server's version (if any) comes back.
   Future<List<OutboxEntry>> discard(
     String id, {
     bool includeDependents = true,
@@ -226,6 +293,8 @@ class SyncEngine {
     if (entry == null || entry.uid != _uid) return const [];
     final removed = [entry, if (includeDependents) ...dependentsOf(id)];
     await _outbox.remove(removed.map((e) => e.id));
+    await _restoreRows(removed);
+    _pullWanted = true;
     _kick();
     return removed;
   }
@@ -237,7 +306,28 @@ class SyncEngine {
     final mine = currentEntries;
     if (mine.isEmpty) return const [];
     await _outbox.remove(mine.map((entry) => entry.id));
+    await _restoreRows(mine);
     return mine;
+  }
+
+  Future<void> _restoreRows(List<OutboxEntry> removed) async {
+    for (final entry in removed) {
+      final table = entry.table;
+      if (table == null) continue;
+      for (final key in entry.rowKeys) {
+        try {
+          if (table.scoped) {
+            await _store.deleteRow(table, key);
+            await _store.setCursor(entry.businessId, table, 0);
+          } else {
+            // Businesses and the profile are re-read whole on every pull.
+            await _store.clearPending(table, key);
+          }
+        } catch (_) {
+          // Best effort: the row stays as it is until the next change.
+        }
+      }
+    }
   }
 
   // --- The loop --------------------------------------------------------------
@@ -254,38 +344,70 @@ class SyncEngine {
   Future<void> _drain() async {
     _running = true;
     try {
+      await _claimed;
       do {
         _again = false;
-        final stop = await _pass();
-        if (stop) break;
+        // The network went down mid-pass: a pull would fail the same way.
+        if (await _pass()) break;
+        if (_pullWanted && _canSend) await _pull();
       } while (_again && _canSend);
     } finally {
       _running = false;
       _busy = false;
       _scheduleWake();
+      _schedulePull();
       _emitStatus();
+      // Anyone still waiting asked for a pull that could not run (offline,
+      // signed out, or the network failed mid-pass).
+      _answerWaiters(_unavailable());
     }
   }
 
   /// Sends due entries until none is left. `true` means stop for now (the
-  /// network is down or local writes are stuck).
+  /// network is down, or sending is not allowed).
   Future<bool> _pass() async {
     while (_canSend) {
-      final retryAt = _writesRetryAt;
-      if (retryAt != null && retryAt.isAfter(_now())) return true;
       final entry = _next();
       if (entry == null) return false;
       _busy = true;
       _emitStatus();
-      if (!await _awaitLocalWrites()) return true;
-      if (!_canSend) return true;
-      // It may have been discarded while waiting.
+      // It may have been discarded meanwhile.
       final current = _outbox.byId(entry.id);
       if (current == null || !current.isPending) continue;
       if (!await _replay(current)) return true;
     }
     return true;
   }
+
+  Future<void> _pull() async {
+    final uid = _uid;
+    if (uid == null) return;
+    _pullWanted = false;
+    await _profiles.push(uid);
+    final result = await _puller.pull(uid);
+    if (result.isSuccess) {
+      _lastSyncedAt = _now();
+      unawaited(_settings.setLastSyncedAt(_lastSyncedAt!));
+    }
+    _answerWaiters(result);
+  }
+
+  void _answerWaiters(AppResult<void> result) {
+    if (_pullWaiters.isEmpty) return;
+    final waiters = List.of(_pullWaiters);
+    _pullWaiters.clear();
+    for (final waiter in waiters) {
+      if (!waiter.isCompleted) waiter.complete(result);
+    }
+  }
+
+  AppResult<void> _unavailable() => Failure(
+    _uid == null
+        ? CloudAvailability.signedOut
+        : _enabled
+        ? const AppException.offline()
+        : const AppException.syncOff(),
+  );
 
   /// The oldest due entry of the signed-in user whose transaction is not
   /// held back by an earlier entry (failed, or still waiting).
@@ -304,21 +426,6 @@ class SyncEngine {
     return null;
   }
 
-  Future<bool> _awaitLocalWrites() async {
-    try {
-      await _network.waitForPendingWrites().timeout(_pendingWritesTimeout);
-      _writesFailures = 0;
-      _writesRetryAt = null;
-      return true;
-    } catch (_) {
-      // Timed out (or the SDK refused): local writes are not on the server
-      // yet, so nothing that may read them is sent. Try again later.
-      _writesFailures++;
-      _writesRetryAt = _now().add(SyncErrorPolicy.backoff(_writesFailures));
-      return false;
-    }
-  }
-
   /// Sends one entry. `false` stops the pass.
   Future<bool> _replay(OutboxEntry entry) async {
     final sending = entry.copyWith(
@@ -335,7 +442,7 @@ class SyncEngine {
       case Success():
         await _outbox.remove([entry.id]);
         final tx = entry.transactionId;
-        if (tx != null) {
+        if (tx != null && !entry.isRowWrite) {
           // The server bumped the version by one: later edits queued
           // against the old version expect one more.
           await _outbox.updateWhere(
@@ -344,6 +451,8 @@ class SyncEngine {
                 other.copyWith(chainedSuccesses: other.chainedSuccesses + 1),
           );
         }
+        await _settle(entry);
+        _pullWanted = true;
         _lastSyncedAt = _now();
         unawaited(_settings.setLastSyncedAt(_lastSyncedAt!));
         _emit(SyncEvent(SyncEventType.applied, entry));
@@ -375,8 +484,27 @@ class SyncEngine {
     }
   }
 
+  /// A pushed row write: its rows no longer wait, unless another queued
+  /// entry still writes them.
+  Future<void> _settle(OutboxEntry entry) async {
+    final table = entry.table;
+    if (table == null) return;
+    final stillQueued = {
+      for (final other in currentEntries)
+        if (other.table == table)
+          for (final key in other.rowKeys) table.keyText(key),
+    };
+    for (final key in entry.rowKeys) {
+      if (stillQueued.contains(table.keyText(key))) continue;
+      try {
+        await _store.clearPending(table, key);
+      } catch (_) {
+        // The next pull of a newer version overwrites it anyway.
+      }
+    }
+  }
+
   Future<void> _resetBackoff() async {
-    _writesRetryAt = null;
     await _outbox.updateWhere(
       (entry) =>
           entry.uid == _uid && entry.isPending && entry.nextAttemptAt != null,
@@ -390,7 +518,7 @@ class SyncEngine {
     _timer = null;
     if (!_canSend) return;
     final now = _now();
-    var earliest = _writesRetryAt;
+    DateTime? earliest;
     for (final entry in currentEntries) {
       final next = entry.nextAttemptAt;
       if (!entry.isPending || next == null) continue;
@@ -401,30 +529,15 @@ class SyncEngine {
     _timer = _timerFactory(delay.isNegative ? Duration.zero : delay, _kick);
   }
 
-  /// Asks Firestore whether it still holds unacknowledged writes (from an
-  /// earlier session, say). Not finishing within the grace period counts as
-  /// "yes" until it does.
-  void _probe() {
-    if (_probing) return;
-    _probing = true;
-    var done = false;
-    final grace = Timer(_probeGrace, () {
-      if (done) return;
-      _probeOutstanding = true;
-      _emitStatus();
+  /// The next periodic pull, while in the foreground.
+  void _schedulePull() {
+    _pullTimer?.cancel();
+    _pullTimer = null;
+    if (!_canSend || !_foreground) return;
+    _pullTimer = _pullTimerFactory(_pullInterval, () {
+      _pullWanted = true;
+      _kick();
     });
-    unawaited(
-      _network
-          .waitForPendingWrites()
-          .then<void>((_) {}, onError: (Object _) {})
-          .whenComplete(() {
-            done = true;
-            grace.cancel();
-            _probing = false;
-            _probeOutstanding = false;
-            _emitStatus();
-          }),
-    );
   }
 
   void _emit(SyncEvent event) {
@@ -435,6 +548,9 @@ class SyncEngine {
     if (_status.isClosed) return;
     final mine = currentEntries;
     final failed = mine.where((entry) => entry.isFailed).length;
+    final local = mine
+        .where((entry) => entry.isRowWrite && !entry.isFailed)
+        .length;
     _status.add(
       SyncStatus(
         syncEnabled: _enabled,
@@ -442,8 +558,7 @@ class SyncEngine {
         syncing: _busy && _canSend,
         pendingCount: mine.length - failed,
         failedCount: failed,
-        firestoreHasPendingWrites:
-            _writes.hasPending || _probeOutstanding || _writesRetryAt != null,
+        localChanges: local,
         lastSyncedAt: _lastSyncedAt,
       ),
     );
@@ -452,9 +567,11 @@ class SyncEngine {
   @disposeMethod
   Future<void> dispose() async {
     _timer?.cancel();
+    _pullTimer?.cancel();
     for (final subscription in _subscriptions) {
       await subscription.cancel();
     }
+    _answerWaiters(_unavailable());
     await _status.close();
     await _events.close();
   }

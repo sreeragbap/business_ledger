@@ -1,19 +1,34 @@
+import 'package:business_ledger/core/database/sync_table.dart';
 import 'package:business_ledger/core/domain/app_exception.dart';
 import 'package:equatable/equatable.dart';
 
-/// What a queued action does: each kind replays one callable.
+/// What a queued action does: a money action replays one RPC; a row write
+/// replays a PostgREST upsert or update of rows written on this device.
 enum OutboxKind {
   confirm('confirm', 'confirmTransaction'),
   settle('settle', 'recordSettlement'),
   edit('edit', 'editConfirmedTransaction'),
-  cancel('cancel', 'cancelTransaction');
+  cancel('cancel', 'cancelTransaction'),
+
+  /// Insert-or-update of whole rows: `{table, rows: [row]}`. New drafts and
+  /// new configuration rows (resending a row is harmless).
+  upsert('upsert', ''),
+
+  /// Column updates: `{table, updates: [{match, values}]}`. Draft edits and
+  /// soft deletes, configuration edits, reorders and archives, business
+  /// settings.
+  update('update', '');
 
   const OutboxKind(this.key, this.callable);
 
   final String key;
 
-  /// The Cloud Function it replays.
+  /// The action it replays (an `RpcClient` action name); empty for row
+  /// writes.
   final String callable;
+
+  /// A plain table write rather than a money action.
+  bool get isRowWrite => this == upsert || this == update;
 
   /// Unknown kinds (e.g. an `upload` entry left by an older build) throw,
   /// and the store skips the record.
@@ -136,7 +151,9 @@ class OutboxEntry extends Equatable {
   final String businessId;
   final OutboxKind kind;
 
-  /// The callable's input as first built, `requestId` included.
+  /// For a money action: the RPC input as first built (camelCase,
+  /// `requestId` included). For a row write: `{table, rows}` or
+  /// `{table, updates}`.
   final Map<String, Object?> payload;
 
   /// The transaction it acts on.
@@ -162,6 +179,7 @@ class OutboxEntry extends Equatable {
   final DateTime? nextAttemptAt;
 
   String get callable => kind.callable;
+  bool get isRowWrite => kind.isRowWrite;
   bool get isPending => status == OutboxStatus.pending;
   bool get isSyncing => status == OutboxStatus.syncing;
   bool get isFailed => status == OutboxStatus.failed;
@@ -176,6 +194,44 @@ class OutboxEntry extends Equatable {
       data['expectedVersion'] = (baseVersion ?? 0) + chainedSuccesses;
     }
     return data;
+  }
+
+  /// For a row write: the table it writes.
+  SyncTable? get table => isRowWrite && payload['table'] is String
+      ? SyncTable.byName(payload['table']! as String)
+      : null;
+
+  /// For an upsert: the rows, as sent.
+  List<Map<String, dynamic>> get rows => [
+    if (payload['rows'] case final List<Object?> list)
+      for (final row in list)
+        if (row is Map) row.map((key, value) => MapEntry('$key', value)),
+  ];
+
+  /// For an update: each `(match, values)` pair, as sent.
+  List<RowUpdate> get updates => [
+    if (payload['updates'] case final List<Object?> list)
+      for (final item in list)
+        if (item case {'match': final Map<Object?, Object?> match})
+          RowUpdate(
+            match.map((key, value) => MapEntry('$key', value!)),
+            switch (item['values']) {
+              final Map<Object?, Object?> values => values.map(
+                (key, value) => MapEntry('$key', value),
+              ),
+              _ => const {},
+            },
+          ),
+  ];
+
+  /// For a row write: the primary keys of every row it touches.
+  List<Map<String, Object?>> get rowKeys {
+    final table = this.table;
+    if (table == null) return const [];
+    return [
+      for (final row in rows) table.keyOf(row),
+      for (final update in updates) update.match,
+    ];
   }
 
   OutboxEntry copyWith({
@@ -237,6 +293,19 @@ class OutboxEntry extends Equatable {
     chainedSuccesses,
     nextAttemptAt,
   ];
+}
+
+/// One `update` of a row write: set [values] where [match] (primary key).
+class RowUpdate extends Equatable {
+  const RowUpdate(this.match, this.values);
+
+  final Map<String, Object> match;
+  final Map<String, Object?> values;
+
+  Map<String, Object?> toJson() => {'match': match, 'values': values};
+
+  @override
+  List<Object?> get props => [match, values];
 }
 
 /// How a transaction's queued actions show in lists.

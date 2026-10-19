@@ -1,29 +1,96 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
 
 import 'package:business_ledger/core/bloc/status.dart';
 import 'package:business_ledger/core/domain/app_exception.dart';
 import 'package:business_ledger/core/domain/app_result.dart';
 import 'package:business_ledger/core/ledger/ledger_math.dart';
-import 'package:cloud_functions/cloud_functions.dart';
+import 'package:business_ledger/core/sync/sync_error_policy.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:supabase_flutter/supabase_flutter.dart' show PostgrestException;
 
-/// `FirebaseFunctionsException`'s constructor is protected; a subclass is
-/// how the plugin itself builds one.
-class _FunctionsError extends FirebaseFunctionsException {
-  _FunctionsError(String code, {super.message = 'msg', super.details})
-    : super(code: code);
-}
+/// What PostgREST hands the client for `app.fail(...)`: SQLSTATE `PTnnn`,
+/// the user-safe MESSAGE and DETAIL as a JSON string
+/// (`supabase/README.md`, Error contract).
+PostgrestException _rpcError(
+  String sqlState,
+  Map<String, Object?> detail, {
+  String message = 'msg',
+}) => PostgrestException(
+  message: message,
+  code: sqlState,
+  details: jsonEncode(detail),
+);
 
 void main() {
-  group('AppException.fromFunctions', () {
+  group('AppException.fromPostgrest: the error contract', () {
+    test('each PTnnn maps to its kind (and transient vs definitive)', () {
+      final cases = <(String, Map<String, Object?>), AppErrorKind>{
+        ('PT400', {'code': 'invalid-argument', 'reason': 'validation'}):
+            AppErrorKind.validation,
+        ('PT401', {'code': 'unauthenticated', 'reason': 'unauthenticated'}):
+            AppErrorKind.unauthenticated,
+        ('PT403', {'code': 'permission-denied', 'reason': 'notMember'}):
+            AppErrorKind.permissionDenied,
+        (
+          'PT403',
+          {
+            'code': 'permission-denied',
+            'reason': 'role',
+            'required': 'admin',
+          },
+        ): AppErrorKind.permissionDenied,
+        (
+          'PT403',
+          {
+            'code': 'permission-denied',
+            'reason': 'immutable',
+            'field': 'business_id',
+          },
+        ): AppErrorKind.permissionDenied,
+        ('PT404', {'code': 'not-found', 'reason': 'notFound'}):
+            AppErrorKind.notFound,
+        ('PT409', {'code': 'aborted', 'reason': 'conflict'}):
+            AppErrorKind.conflict,
+        (
+          'PT412',
+          {
+            'code': 'failed-precondition',
+            'reason': 'violation',
+            'violation': 'overpayment',
+          },
+        ): AppErrorKind.violation,
+        ('PT412', {'code': 'failed-precondition', 'reason': 'inUse'}):
+            AppErrorKind.inUse,
+        ('PT412', {'code': 'failed-precondition', 'reason': 'role'}):
+            AppErrorKind.permissionDenied,
+        ('PT422', {'code': 'already-exists', 'reason': 'requestReused'}):
+            AppErrorKind.requestReused,
+        ('PT422', {'code': 'already-exists', 'reason': 'validation'}):
+            AppErrorKind.alreadyExists,
+      };
+      for (final MapEntry(key: (state, detail), value: kind) in cases.entries) {
+        final error = AppException.fromPostgrest(_rpcError(state, detail));
+        expect(error.kind, kind, reason: '$state $detail');
+        expect(error.code, detail['code'], reason: '$state $detail');
+        expect(
+          SyncErrorPolicy.isTransient(error),
+          isFalse,
+          reason: 'a deliberate refusal is definitive: $state',
+        );
+      }
+    });
+
     test('violation carries the ledger rule and its message', () {
-      final error = AppException.fromFunctions(
-        _FunctionsError(
-          'failed-precondition',
-          message: 'That is more than the outstanding balance.',
-          details: const {'reason': 'violation', 'violation': 'overpayment'},
-        ),
+      final error = AppException.fromPostgrest(
+        _rpcError('PT412', {
+          'code': 'failed-precondition',
+          'reason': 'violation',
+          'violation': 'overpayment',
+        }, message: 'That is more than the outstanding balance.'),
       );
       expect(error.kind, AppErrorKind.violation);
       expect(error.reason, AppErrorReason.violation);
@@ -31,127 +98,147 @@ void main() {
       expect(error.message, LedgerViolation.overpayment.message);
     });
 
-    test('aborted + conflict is a conflict the client reloads on', () {
-      final error = AppException.fromFunctions(
-        _FunctionsError(
-          'aborted',
-          message: 'This record was changed by someone else.',
-          details: const {'reason': 'conflict'},
-        ),
+    test('conflict is one the client reloads on, with the server copy', () {
+      final error = AppException.fromPostgrest(
+        _rpcError('PT409', {
+          'code': 'aborted',
+          'reason': 'conflict',
+        }, message: 'This record was changed by someone else.'),
       );
-      expect(error.kind, AppErrorKind.conflict);
       expect(error.isConflict, isTrue);
       expect(error.message, 'This record was changed by someone else.');
     });
 
     test('validation exposes the rejected field', () {
-      final error = AppException.fromFunctions(
-        _FunctionsError(
-          'invalid-argument',
-          message: 'Amount must be positive.',
-          details: const {'reason': 'validation', 'field': 'amountMinor'},
-        ),
+      final error = AppException.fromPostgrest(
+        _rpcError('PT400', {
+          'code': 'invalid-argument',
+          'reason': 'validation',
+          'field': 'changes.date',
+        }, message: 'Use a yyyy-MM-dd date'),
       );
       expect(error.kind, AppErrorKind.validation);
-      expect(error.field, 'amountMinor');
+      expect(error.field, 'changes.date');
       expect(
-        Status.fromException(error).errorFor('amountMinor'),
-        'Amount must be positive.',
+        Status.fromException(error).errorFor('changes.date'),
+        'Use a yyyy-MM-dd date',
       );
-    });
-
-    test('notMember and role are permission failures', () {
-      for (final reason in ['notMember', 'role']) {
-        final error = AppException.fromFunctions(
-          _FunctionsError(
-            'permission-denied',
-            details: {'reason': reason},
-          ),
-        );
-        expect(error.kind, AppErrorKind.permissionDenied, reason: reason);
-      }
-    });
-
-    test('notFound, inUse and requestReused map to their kinds', () {
-      const expected = {
-        'notFound': AppErrorKind.notFound,
-        'inUse': AppErrorKind.inUse,
-        'requestReused': AppErrorKind.requestReused,
-      };
-      for (final MapEntry(key: reason, value: kind) in expected.entries) {
-        final error = AppException.fromFunctions(
-          _FunctionsError(
-            'failed-precondition',
-            details: {'reason': reason},
-          ),
-        );
-        expect(error.kind, kind, reason: reason);
-      }
-    });
-
-    test('unavailable without a reason is offline, with generic copy', () {
-      final error = AppException.fromFunctions(
-        _FunctionsError('unavailable', message: 'UNAVAILABLE: io error'),
-      );
-      expect(error.kind, AppErrorKind.offline);
-      expect(error.isOffline, isTrue);
-      expect(error.message, isNot(contains('io error')));
-    });
-
-    test('an internal crash never leaks its server text', () {
-      final error = AppException.fromFunctions(
-        _FunctionsError('internal', message: 'TypeError: x is undefined'),
-      );
-      expect(error.kind, AppErrorKind.unknown);
-      expect(error.message, isNot(contains('TypeError')));
-      expect(error.cause, contains('TypeError'));
-    });
-
-    test('platform spellings of the code are normalised', () {
-      final error = AppException.fromFunctions(
-        _FunctionsError('DEADLINE_EXCEEDED'),
-      );
-      expect(error.code, 'deadline-exceeded');
-      expect(error.kind, AppErrorKind.timeout);
-    });
-
-    test('details as Map<Object?, Object?> from the platform channel', () {
-      final error = AppException.fromFunctions(
-        _FunctionsError(
-          'aborted',
-          details: const <Object?, Object?>{'reason': 'conflict'},
-        ),
-      );
-      expect(error.kind, AppErrorKind.conflict);
     });
 
     test('an unknown violation key is ignored, not a crash', () {
-      final error = AppException.fromFunctions(
-        _FunctionsError(
-          'failed-precondition',
-          message: 'Something new.',
-          details: const {'reason': 'violation', 'violation': 'brandNewRule'},
-        ),
+      final error = AppException.fromPostgrest(
+        _rpcError('PT412', {
+          'code': 'failed-precondition',
+          'reason': 'violation',
+          'violation': 'brandNewRule',
+        }, message: 'Something new.'),
       );
       expect(error.kind, AppErrorKind.violation);
       expect(error.violation, isNull);
       expect(error.message, 'Something new.');
     });
+
+    test('details already decoded as a map are read the same', () {
+      final error = AppException.fromPostgrest(
+        const PostgrestException(
+          message: 'm',
+          code: 'PT404',
+          details: {'code': 'not-found', 'reason': 'notFound'},
+        ),
+      );
+      expect(error.kind, AppErrorKind.notFound);
+    });
+  });
+
+  group('AppException.fromPostgrest: outside the contract', () {
+    test('RLS / privileges (42501) is permission denied', () {
+      final error = AppException.fromPostgrest(
+        const PostgrestException(
+          message:
+              'new row violates row-level security policy for table '
+              '"categories"',
+          code: '42501',
+        ),
+      );
+      expect(error.kind, AppErrorKind.permissionDenied);
+      expect(error.code, 'permission-denied');
+      expect(error.message, isNot(contains('row-level')));
+      expect(SyncErrorPolicy.isTransient(error), isFalse);
+    });
+
+    test('a CHECK violation is a definitive validation failure', () {
+      final error = AppException.fromPostgrest(
+        const PostgrestException(message: 'check', code: '23514'),
+      );
+      expect(error.kind, AppErrorKind.validation);
+      expect(SyncErrorPolicy.isTransient(error), isFalse);
+    });
+
+    test('a rejected or expired token is unauthenticated', () {
+      for (final code in ['PGRST301', 'PGRST303', '401']) {
+        final error = AppException.fromPostgrest(
+          PostgrestException(message: 'JWT expired', code: code),
+        );
+        expect(error.kind, AppErrorKind.unauthenticated, reason: code);
+      }
+    });
+
+    test('a PTnnn without the JSON detail falls back to its status', () {
+      final error = AppException.fromPostgrest(
+        const PostgrestException(message: 'x', code: 'PT409'),
+      );
+      expect(error.kind, AppErrorKind.conflict);
+    });
+
+    test('deadlock, timeouts and gateway errors are transient; their text '
+        'never shows', () {
+      for (final code in ['40P01', '57014', '503', '502', 'XX000']) {
+        final error = AppException.fromPostgrest(
+          PostgrestException(message: 'internal detail $code', code: code),
+        );
+        expect(SyncErrorPolicy.isTransient(error), isTrue, reason: code);
+        expect(error.message, isNot(contains('internal detail')));
+        expect(error.cause, contains('internal detail'));
+      }
+    });
+  });
+
+  group('AppException.from: no answer from the network', () {
+    test('socket, HTTP client and timeout errors are offline / timeout', () {
+      expect(
+        AppException.from(const SocketException('no route')).kind,
+        AppErrorKind.offline,
+      );
+      expect(
+        AppException.from(http.ClientException('Connection closed')).kind,
+        AppErrorKind.offline,
+      );
+      expect(
+        AppException.from(TimeoutException('slow')).kind,
+        AppErrorKind.timeout,
+      );
+      expect(
+        SyncErrorPolicy.isNetworkDown(
+          AppException.from(const SocketException('x')),
+        ),
+        isTrue,
+      );
+    });
   });
 
   group('AppException.fromFirebase', () {
-    test('Firestore codes map to kinds', () {
+    test('Firebase codes map to kinds', () {
       const expected = {
         'permission-denied': AppErrorKind.permissionDenied,
         'unavailable': AppErrorKind.offline,
         'not-found': AppErrorKind.notFound,
         'aborted': AppErrorKind.conflict,
-        'cloud_firestore/unauthenticated': AppErrorKind.unauthenticated,
+        'auth/unauthenticated': AppErrorKind.unauthenticated,
         'something-else': AppErrorKind.unknown,
       };
       for (final MapEntry(key: code, value: kind) in expected.entries) {
         final error = AppException.fromFirebase(
-          FirebaseException(plugin: 'cloud_firestore', code: code),
+          FirebaseException(plugin: 'firebase_core', code: code),
         );
         expect(error.kind, kind, reason: code);
         expect(error.message, isNotEmpty);
@@ -186,7 +273,9 @@ void main() {
   group('AppException.from', () {
     test('dispatches subtypes before FirebaseException', () {
       expect(
-        AppException.from(_FunctionsError('aborted')).kind,
+        AppException.from(
+          _rpcError('PT409', {'code': 'aborted', 'reason': 'conflict'}),
+        ).kind,
         AppErrorKind.conflict,
       );
       expect(
@@ -211,7 +300,7 @@ void main() {
   group('AppResult', () {
     test('guard turns a throw into a Failure', () async {
       final result = await AppResult.guard<int>(
-        () async => throw _FunctionsError('unavailable'),
+        () async => throw const SocketException('down'),
       );
       expect(result.isFailure, isTrue);
       expect(result.errorOrNull?.kind, AppErrorKind.offline);

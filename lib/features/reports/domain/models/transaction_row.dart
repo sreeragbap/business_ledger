@@ -1,3 +1,4 @@
+import 'package:business_ledger/core/domain/json_read.dart';
 import 'package:business_ledger/core/ledger/ledger_enums.dart';
 import 'package:business_ledger/core/ledger/ledger_math.dart';
 import 'package:business_ledger/features/documents/domain/models/json_reader.dart';
@@ -20,6 +21,10 @@ class TransactionRow extends Equatable {
     this.outstandingMinor = 0,
     this.paymentStatus,
   });
+
+  /// A `transactions` row (snake_case).
+  factory TransactionRow.fromRow(Map<String, dynamic> row) =>
+      TransactionRow.fromMap('${row['id']}', RowKeys.camelMap(row));
 
   /// Drafts may lack most fields; confirmed entries have them all.
   factory TransactionRow.fromMap(String id, Map<String, dynamic> map) {

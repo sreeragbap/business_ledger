@@ -1,11 +1,9 @@
-import 'package:business_ledger/core/firebase/firestore_read.dart';
-import 'package:business_ledger/core/firebase/firestore_refs.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:business_ledger/core/domain/json_read.dart';
 import 'package:equatable/equatable.dart';
 
-/// `businesses/{bid}/projects/{id}`: a job, site or engagement that
-/// transactions can be tagged with (and reported by, `stats.byProject`).
-/// The rules require `name` (≤ 120 chars). Archived, never deleted.
+/// A `projects` row: a job, site or engagement that transactions can be
+/// tagged with (and reported by, `daily_stats.by_project`). The table
+/// requires `name` (≤ 120 chars). Archived, never deleted.
 class Project extends Equatable {
   const Project({
     required this.id,
@@ -17,8 +15,9 @@ class Project extends Equatable {
     this.updatedAt,
   });
 
-  factory Project.fromFirestore(DocumentSnapshot<JsonMap> doc) =>
-      Project.fromMap(doc.id, doc.data() ?? const {});
+  /// A Postgres row (snake_case).
+  factory Project.fromRow(Map<String, dynamic> row) =>
+      Project.fromMap(row.readString('id'), RowKeys.camelMap(row));
 
   factory Project.fromMap(String id, Map<String, dynamic> map) => Project(
     id: id,
@@ -58,6 +57,13 @@ class Project extends Equatable {
     'code': code.trim(),
     'description': description.trim(),
     'archived': archived,
+  };
+
+  /// The row a client writes (insert or update) for [businessId].
+  Map<String, Object?> toRow(String businessId) => {
+    'id': id,
+    'business_id': businessId,
+    ...RowKeys.snakeMap(toMap()),
   };
 
   Project copyWith({

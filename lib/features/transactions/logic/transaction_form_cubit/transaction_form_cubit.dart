@@ -35,7 +35,8 @@ part 'transaction_form_state.dart';
 
 /// Create or edit a transaction.
 ///
-/// * A new entry or a draft is saved straight to Firestore (works offline).
+/// * A new entry or a draft is saved on the device and queued for upload
+///   (works offline).
 /// * "Save & confirm" (admin+) saves the draft, waits for the server to
 ///   have it, then calls `confirmTransaction`; "as paid" adds `settleNow`.
 ///   Offline or with Cloud sync off the draft is saved locally and the

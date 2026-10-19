@@ -1,4 +1,4 @@
-import 'package:business_ledger/core/firebase/firestore_read.dart';
+import 'package:business_ledger/core/domain/json_read.dart';
 import 'package:business_ledger/core/ledger/ledger_enums.dart';
 import 'package:equatable/equatable.dart';
 

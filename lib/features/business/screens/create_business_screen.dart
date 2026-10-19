@@ -18,7 +18,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 
-/// Creates a business through the `createBusiness` callable, which seeds
+/// Creates a business through the `create_business` RPC, which seeds
 /// the chosen template's categories and fields and makes the caller owner.
 /// Needs a connection; the offline refusal is shown like any other error.
 @RoutePage()

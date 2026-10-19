@@ -13,7 +13,8 @@ abstract class BusinessRepository {
   /// One business, live; `null` once it no longer exists.
   Stream<AppResult<Business?>> watchBusiness(String businessId);
 
-  /// `createBusiness` callable. Online only. Returns the new business id.
+  /// `create_business` RPC. Online only. Returns the new business id, once
+  /// its rows are on the device (or after a short wait).
   Future<AppResult<String>> createBusiness(CreateBusinessRequest request);
 
   /// Name, description, time zone and settings (admin+). Offline-friendly:
@@ -33,10 +34,10 @@ abstract class BusinessRepository {
   });
 
   /// The business [uid] last worked in: the on-device cache first, then
-  /// `users/{uid}.lastBusinessId`. `null` when there is none.
+  /// `profiles.last_business_id`. `null` when there is none.
   Future<String?> lastBusinessId(String uid);
 
   /// Records (or with `null`, forgets) [uid]'s current business on this
-  /// device and in `users/{uid}`, so another device opens the same one.
+  /// device and in `profiles`, so another device opens the same one.
   Future<void> rememberBusiness(String uid, String? businessId);
 }

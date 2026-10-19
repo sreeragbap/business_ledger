@@ -1,10 +1,8 @@
-import 'package:business_ledger/core/firebase/firestore_read.dart';
-import 'package:business_ledger/core/firebase/firestore_refs.dart';
+import 'package:business_ledger/core/domain/json_read.dart';
 import 'package:business_ledger/features/categories/domain/const/field_type.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:equatable/equatable.dart';
 
-/// `businesses/{bid}/fields/{id}`: a business-defined input that categories
+/// A `custom_fields` row: a business-defined input that categories
 /// attach to the transaction form. Values live on the transaction as
 /// `customFields{fieldId: value}` (see [FieldType] for each type's shape).
 ///
@@ -22,8 +20,9 @@ class CustomField extends Equatable {
     this.updatedAt,
   });
 
-  factory CustomField.fromFirestore(DocumentSnapshot<JsonMap> doc) =>
-      CustomField.fromMap(doc.id, doc.data() ?? const {});
+  /// A Postgres row (snake_case).
+  factory CustomField.fromRow(Map<String, dynamic> row) =>
+      CustomField.fromMap(row.readString('id'), RowKeys.camelMap(row));
 
   factory CustomField.fromMap(String id, Map<String, dynamic> map) =>
       CustomField(
@@ -61,6 +60,13 @@ class CustomField extends Equatable {
     'required': required,
     'sortOrder': sortOrder,
     'archived': archived,
+  };
+
+  /// The row a client writes (insert or update) for [businessId].
+  Map<String, Object?> toRow(String businessId) => {
+    'id': id,
+    'business_id': businessId,
+    ...RowKeys.snakeMap(toMap()),
   };
 
   CustomField copyWith({

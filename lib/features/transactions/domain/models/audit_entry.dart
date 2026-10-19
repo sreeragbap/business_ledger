@@ -1,10 +1,8 @@
-import 'package:business_ledger/core/firebase/firestore_read.dart';
-import 'package:business_ledger/core/firebase/firestore_refs.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:business_ledger/core/domain/json_read.dart';
 import 'package:equatable/equatable.dart';
 
-/// `businesses/{bid}/audit/{id}` (`functions/src/lib/audit.ts`). Readable by
-/// admins and owners only.
+/// An `audit_log` row, written by the RPCs. Readable by admins and owners
+/// only (and only pulled to their devices).
 class AuditEntry extends Equatable {
   const AuditEntry({
     required this.id,
@@ -18,8 +16,9 @@ class AuditEntry extends Equatable {
     this.at,
   });
 
-  factory AuditEntry.fromFirestore(DocumentSnapshot<JsonMap> doc) =>
-      AuditEntry.fromMap(doc.id, doc.data() ?? const {});
+  /// A Postgres row (snake_case; `before`/`after` keep camelCase keys).
+  factory AuditEntry.fromRow(Map<String, dynamic> row) =>
+      AuditEntry.fromMap('${row['id']}', RowKeys.camelMap(row));
 
   factory AuditEntry.fromMap(String id, Map<String, dynamic> map) => AuditEntry(
     id: id,

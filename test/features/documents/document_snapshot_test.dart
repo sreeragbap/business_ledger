@@ -97,7 +97,7 @@ void main() {
       expect(() => IssuedDocument.fromMap('x', badDate), throwsFormatException);
     });
 
-    test('a pending server timestamp parses as null', () {
+    test('a missing timestamp parses as null', () {
       final map = invoiceMap()..['issuedAt'] = null;
       expect(IssuedDocument.fromMap('x', map).issuedAt, isNull);
     });

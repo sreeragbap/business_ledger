@@ -8,7 +8,7 @@ abstract class DocumentRepository {
   const DocumentRepository();
 
   /// Issues (or returns the existing) invoice, bill or receipt through the
-  /// `issueDocument` callable. Requires a connection.
+  /// `issue_document` RPC. Requires a connection.
   ///
   /// [requestId] comes from `RequestIds.next()` once per user action and is
   /// reused for every retry of that action.
@@ -21,7 +21,7 @@ abstract class DocumentRepository {
   });
 
   /// Every document issued for a transaction, newest first. Served from the
-  /// local cache while offline.
+  /// on-device store (works offline).
   Stream<AppResult<List<IssuedDocument>>> watchForTransaction(
     String businessId,
     String transactionId,

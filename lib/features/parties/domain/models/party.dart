@@ -1,11 +1,9 @@
-import 'package:business_ledger/core/firebase/firestore_read.dart';
-import 'package:business_ledger/core/firebase/firestore_refs.dart';
+import 'package:business_ledger/core/domain/json_read.dart';
 import 'package:business_ledger/features/parties/domain/const/party_kind.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:equatable/equatable.dart';
 
-/// `businesses/{bid}/parties/{id}`: a customer, a supplier, or both. The
-/// rules require `name` (≤ 120 chars) and a valid `kind`. Archived, never
+/// A `parties` row: a customer, a supplier, or both. The table requires
+/// `name` (≤ 120 chars) and a valid `kind`. Archived, never
 /// deleted: transactions keep a `partyName` snapshot.
 class Party extends Equatable {
   const Party({
@@ -20,8 +18,9 @@ class Party extends Equatable {
     this.updatedAt,
   });
 
-  factory Party.fromFirestore(DocumentSnapshot<JsonMap> doc) =>
-      Party.fromMap(doc.id, doc.data() ?? const {});
+  /// A Postgres row (snake_case).
+  factory Party.fromRow(Map<String, dynamic> row) =>
+      Party.fromMap(row.readString('id'), RowKeys.camelMap(row));
 
   factory Party.fromMap(String id, Map<String, dynamic> map) => Party(
     id: id,
@@ -67,6 +66,13 @@ class Party extends Equatable {
     'email': email.trim(),
     'address': address.trim(),
     'archived': archived,
+  };
+
+  /// The row a client writes (insert or update) for [businessId].
+  Map<String, Object?> toRow(String businessId) => {
+    'id': id,
+    'business_id': businessId,
+    ...RowKeys.snakeMap(toMap()),
   };
 
   Party copyWith({

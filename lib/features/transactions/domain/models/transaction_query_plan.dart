@@ -3,10 +3,13 @@ import 'package:business_ledger/features/transactions/domain/models/ledger_trans
 import 'package:business_ledger/features/transactions/domain/models/transaction_filter.dart';
 import 'package:equatable/equatable.dart';
 
-/// Which part of a [TransactionFilter] Firestore applies, using only the
-/// composite indexes in `firestore.indexes.json`. Whatever the plan leaves
-/// out is applied on the device (`TransactionFilter.apply`), over the
-/// entries loaded so far.
+/// Which part of a [TransactionFilter] a backend query applies. Reads now
+/// come from the on-device SQLite store, which applies the whole filter
+/// ([local]); [TransactionQueryPlan.of] is the planner written for
+/// Firestore's composite indexes, kept for a server-side search.
+///
+/// Whatever a plan leaves out is applied on the device
+/// (`TransactionFilter.apply`), over the entries loaded so far.
 ///
 /// Indexed shapes used (all `dateTs` descending unless noted):
 /// `{}` (single-field `dateTs`), `status`, `type`, `categoryId`,
@@ -99,6 +102,10 @@ class TransactionQueryPlan extends Equatable {
       },
     );
   }
+
+  /// Everything applied by the query, in the order asked for: what the
+  /// local store does.
+  static const TransactionQueryPlan local = TransactionQueryPlan();
 
   static const String dateField = 'dateTs';
   static const String dueField = 'dueDate';

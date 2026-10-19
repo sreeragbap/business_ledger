@@ -1,5 +1,4 @@
 import 'package:business_ledger/features/documents/domain/models/issued_document.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 
 /// A document map as `issueDocument` writes it (an invoice, INR, two lines,
 /// partly paid with a credit).
@@ -61,7 +60,7 @@ Map<String, dynamic> invoiceMap({
     },
     'settlement': null,
   },
-  'issuedAt': Timestamp.fromDate(DateTime.utc(2026, 10, 2, 9)),
+  'issuedAt': '2026-10-02T09:00:00+00:00',
   'issuedBy': 'u1',
   'voided': voided,
 };

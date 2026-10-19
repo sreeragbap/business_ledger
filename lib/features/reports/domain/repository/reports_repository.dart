@@ -8,15 +8,15 @@ abstract class ReportsRepository {
   const ReportsRepository();
 
   /// Stats days from [from] to [to] (`yyyy-MM-dd`, inclusive), oldest first.
-  /// Days without activity have no document and are simply absent.
+  /// Days without activity have no row and are simply absent.
   Stream<AppResult<List<DailyStats>>> watchStats(
     String businessId, {
     required String from,
     required String to,
   });
 
-  /// `sum(outstandingMinor)` over open transactions, per direction. Falls
-  /// back to summing cached documents when the server cannot be reached.
+  /// `sum(outstandingMinor)` over open transactions, per direction, from
+  /// the on-device store.
   Future<AppResult<ReceivablesPayables>> receivablesAndPayables(
     String businessId,
   );
@@ -39,4 +39,8 @@ abstract class ReportsRepository {
 
   /// Category and project names, to label the ids found in stats.
   Future<AppResult<ReportLabels>> labels(String businessId);
+
+  /// Pull-to-refresh: asks the server for what changed. Completes when
+  /// done, or at once when unreachable.
+  Future<void> refresh() async {}
 }

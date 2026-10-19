@@ -7,31 +7,17 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'sync_fakes.dart';
 
 void main() {
-  late FakeNetwork network;
-
-  setUp(() => network = FakeNetwork());
-
   Future<SyncSettings> settings([Map<String, Object> stored = const {}]) async {
     SharedPreferences.setMockInitialValues(stored);
-    return SyncSettings(await SharedPreferences.getInstance(), network);
+    return SyncSettings(await SharedPreferences.getInstance());
   }
 
-  test('on by default; apply at startup enables the network', () async {
-    final sync = await settings();
-    expect(sync.enabled, isTrue);
-    await sync.apply();
-    expect(network.enables, 1);
-    expect(network.disables, 0);
+  test('on by default; a stored "off" is read back', () async {
+    expect((await settings()).enabled, isTrue);
+    expect((await settings({SyncSettings.prefsKey: false})).enabled, isFalse);
   });
 
-  test('a stored "off" disables the network at startup', () async {
-    final sync = await settings({SyncSettings.prefsKey: false});
-    expect(sync.enabled, isFalse);
-    await sync.apply();
-    expect(network.disables, 1);
-  });
-
-  test('switching persists, announces and applies', () async {
+  test('switching persists and announces, once per change', () async {
     final sync = await settings();
     final seen = <bool>[];
     final subscription = sync.enabledChanges.listen(seen.add);
@@ -40,27 +26,18 @@ void main() {
     await sync.setEnabled(value: true);
     await Future<void>.delayed(Duration.zero);
     expect(seen, [true, false, true]);
-    expect(network.disables, 1, reason: 'no-op when unchanged');
-    expect(network.enables, 1);
     final prefs = await SharedPreferences.getInstance();
     expect(prefs.getBool(SyncSettings.prefsKey), isTrue);
     await subscription.cancel();
     await sync.dispose();
   });
 
-  test('a failing SDK call does not undo the switch', () async {
-    final failing = _FailingNetwork();
-    SharedPreferences.setMockInitialValues({});
-    final sync = SyncSettings(await SharedPreferences.getInstance(), failing);
-    await sync.setEnabled(value: false);
-    expect(sync.enabled, isFalse);
-  });
-
   group('CloudAvailability', () {
-    test('needs both a network and sync on', () async {
+    test('needs a network, sync on and someone signed in', () async {
       final sync = await settings();
       final device = FakeConnectivityService();
-      final cloud = CloudAvailability(device, sync);
+      final identity = FakeIdentity();
+      final cloud = CloudAvailability(device, sync, identity);
       final seen = <bool>[];
       final subscription = cloud.onlineChanges.listen(seen.add);
       await settle();
@@ -80,14 +57,20 @@ void main() {
 
       device.online = true;
       await settle();
-      expect(seen, [true, false, true, false, true]);
+      expect(cloud.isOnline, isTrue);
+
+      identity.current = null;
+      await settle();
+      expect(cloud.isOnline, isFalse);
+      expect(await cloud.refresh(), isFalse);
+      expect(cloud.unavailableError.kind, AppErrorKind.unauthenticated);
+
+      identity.current = 'u1';
+      await settle();
+      expect(seen, [true, false, true, false, true, false, true]);
       await subscription.cancel();
       await device.dispose();
+      await identity.dispose();
     });
   });
-}
-
-class _FailingNetwork extends FakeNetwork {
-  @override
-  Future<void> disable() => Future.error(StateError('terminated'));
 }

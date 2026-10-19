@@ -201,8 +201,11 @@ class TransactionListCubit extends Cubit<TransactionListState> {
     await _subscribe();
   }
 
-  /// Re-attaches the listener; completes when the next result arrives.
+  /// Pulls what changed on the server, then re-attaches the listener;
+  /// completes when the next result arrives.
   Future<void> refresh() async {
+    await _repository.refresh();
+    if (isClosed) return;
     final completer = _refreshed = Completer<void>();
     await _subscribe();
     return completer.future;

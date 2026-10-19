@@ -2,8 +2,6 @@ import 'dart:async';
 
 import 'package:business_ledger/app/app_config.dart';
 import 'package:business_ledger/core/di/injection.dart';
-import 'package:business_ledger/core/domain/app_exception.dart';
-import 'package:business_ledger/core/firebase/local_first_writer.dart';
 import 'package:business_ledger/core/responsive/app_screen_util.dart';
 import 'package:business_ledger/core/router/app_router.dart';
 import 'package:business_ledger/core/sync/sync_engine.dart';
@@ -40,15 +38,23 @@ class _AppState extends State<App> {
   @override
   void initState() {
     super.initState();
+    final engine = getIt<SyncEngine>();
     _lifecycle = AppLifecycleListener(
       // Hidden/shown rather than paused/resumed: a pull-down of the
       // notification shade makes the app inactive, which is not leaving it.
-      onHide: _lock.onBackgrounded,
-      onShow: _lock.onResumed,
+      onHide: () {
+        _lock.onBackgrounded();
+        engine.setForeground(foreground: false);
+      },
+      onShow: () {
+        _lock.onResumed();
+        engine.setForeground(foreground: true);
+      },
     );
-    // Replays the outbox whenever a user is signed in, sync is on and the
-    // device is online; it watches all three itself.
-    unawaited(getIt<SyncEngine>().start());
+    // Pushes the outbox and pulls the server's changes whenever a user is
+    // signed in, sync is on and the device is online; it watches all three
+    // itself.
+    unawaited(engine.start());
   }
 
   @override
@@ -162,8 +168,8 @@ class _SyncFrame extends StatelessWidget {
 }
 
 /// Shows a snack bar for changes the UI already reported as saved but the
-/// server later refused: configuration writes queued offline, and outbox
-/// actions refused on replay. Sits inside `MaterialApp`, below its
+/// server later refused: drafts and settings saved on the device, and money
+/// actions, refused on replay. Sits inside `MaterialApp`, below its
 /// `ScaffoldMessenger`.
 class _LateWriteFailures extends StatefulWidget {
   const _LateWriteFailures({required this.child});
@@ -175,20 +181,11 @@ class _LateWriteFailures extends StatefulWidget {
 }
 
 class _LateWriteFailuresState extends State<_LateWriteFailures> {
-  StreamSubscription<AppException>? _subscription;
   StreamSubscription<SyncEvent>? _refusals;
 
   @override
   void initState() {
     super.initState();
-    _subscription = getIt<LocalFirstWriter>().lateFailures.listen((error) {
-      if (!mounted) return;
-      showAppSnackBar(
-        context,
-        "A change made offline couldn't be saved: ${error.message}",
-        kind: AppSnackBarKind.error,
-      );
-    });
     _refusals = getIt<SyncEngine>().events
         .where((event) => event.type == SyncEventType.failed)
         .listen((event) {
@@ -204,7 +201,6 @@ class _LateWriteFailuresState extends State<_LateWriteFailures> {
 
   @override
   void dispose() {
-    unawaited(_subscription?.cancel());
     unawaited(_refusals?.cancel());
     super.dispose();
   }

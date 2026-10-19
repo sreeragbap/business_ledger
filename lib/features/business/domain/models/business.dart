@@ -1,15 +1,14 @@
-import 'package:business_ledger/core/firebase/firestore_read.dart';
-import 'package:business_ledger/core/firebase/firestore_refs.dart';
+import 'package:business_ledger/core/domain/json_read.dart';
 import 'package:business_ledger/core/money/currency.dart';
 import 'package:business_ledger/features/business/domain/const/business_template.dart';
 import 'package:business_ledger/features/business/domain/const/standard_field.dart';
 import 'package:business_ledger/features/business/domain/const/time_zones.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:equatable/equatable.dart';
 
-/// `businesses/{id}` (ARCHITECTURE §3). Created only by the `createBusiness`
-/// function; clients may update [name], [description], [timezone] and
-/// [settings] (admin+) or [archived] (owner) — see `firestore.rules`.
+/// A `businesses` row (`supabase/README.md`). Created only by the
+/// `create_business` RPC; clients may update [name], [description],
+/// [timezone] and [settings] (admin+) or [archived] (owner) — row level
+/// security and column privileges enforce it.
 class Business extends Equatable {
   const Business({
     required this.id,
@@ -19,15 +18,24 @@ class Business extends Equatable {
     this.timezone = TimeZones.fallback,
     this.template = BusinessTemplate.blank,
     this.ownerId = '',
-    this.memberUids = const [],
     this.settings = const BusinessSettings(),
     this.archived = false,
     this.createdAt,
     this.updatedAt,
   });
 
-  factory Business.fromFirestore(DocumentSnapshot<JsonMap> doc) =>
-      Business.fromMap(doc.id, doc.data() ?? const {});
+  /// A Postgres row (snake_case; the currency is three columns).
+  factory Business.fromRow(Map<String, dynamic> row) => Business.fromMap(
+    row.readString('id'),
+    {
+      ...RowKeys.camelMap(row),
+      'currency': {
+        'code': row['currency_code'],
+        'decimals': row['currency_decimals'],
+        'symbol': row['currency_symbol'],
+      },
+    },
+  );
 
   factory Business.fromMap(String id, Map<String, dynamic> map) {
     final currencyMap = map.readMap('currency');
@@ -39,7 +47,6 @@ class Business extends Equatable {
       timezone: map.readOptionalString('timezone') ?? TimeZones.fallback,
       template: BusinessTemplate.fromKey(map['template']),
       ownerId: map.readString('ownerId'),
-      memberUids: map.readStringList('memberUids'),
       settings: BusinessSettings.fromMap(map.readMap('settings')),
       archived: map.readBool('archived'),
       createdAt: map.readDate('createdAt'),
@@ -58,13 +65,12 @@ class Business extends Equatable {
   final String timezone;
   final BusinessTemplate template;
   final String ownerId;
-  final List<String> memberUids;
   final BusinessSettings settings;
   final bool archived;
   final DateTime? createdAt;
   final DateTime? updatedAt;
 
-  /// The stored currency as written by the function. A currency this app
+  /// The stored currency as written by the server. A currency this app
   /// does not list is still honoured as stored (its decimals are what the
   /// amounts were written with); a malformed one falls back to INR.
   static Currency _currency(Map<String, dynamic> map) {
@@ -93,20 +99,20 @@ class Business extends Equatable {
 
   bool isEnabled(StandardField field) => settings.isEnabled(field);
 
-  /// The fields a client may change, as a Firestore update. [settings] is
-  /// written field by field (`settings.invoicePrefix`) so settings keys this
-  /// version does not know survive. The rules see only `settings` changed.
+  /// The columns a client may change, as a row update. [settings] is
+  /// merged over [storedSettings] (the row's current `settings`), so keys
+  /// this version does not know survive.
   static Map<String, Object?> detailsUpdate({
     required String name,
     required String description,
     required String timezone,
     required BusinessSettings settings,
+    Map<String, dynamic> storedSettings = const {},
   }) => {
     'name': name.trim(),
     'description': description.trim(),
     'timezone': timezone,
-    for (final entry in settings.toMap().entries)
-      'settings.${entry.key}': entry.value,
+    'settings': {...storedSettings, ...settings.toMap()},
   };
 
   Business copyWith({
@@ -123,7 +129,6 @@ class Business extends Equatable {
     timezone: timezone ?? this.timezone,
     template: template,
     ownerId: ownerId,
-    memberUids: memberUids,
     settings: settings ?? this.settings,
     archived: archived ?? this.archived,
     createdAt: createdAt,
@@ -139,7 +144,6 @@ class Business extends Equatable {
     timezone,
     template,
     ownerId,
-    memberUids,
     settings,
     archived,
     createdAt,
@@ -147,7 +151,7 @@ class Business extends Equatable {
   ];
 }
 
-/// `businesses/{id}.settings`.
+/// `businesses.settings` (jsonb, camelCase keys).
 class BusinessSettings extends Equatable {
   const BusinessSettings({
     this.enabledStandardFieldKeys = const [],

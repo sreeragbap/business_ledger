@@ -1,16 +1,23 @@
 import 'dart:async';
 
+import 'package:business_ledger/core/database/local_store.dart';
 import 'package:business_ledger/core/domain/app_exception.dart';
 import 'package:business_ledger/core/domain/app_result.dart';
 import 'package:business_ledger/core/firebase/connectivity_service.dart';
-import 'package:business_ledger/core/sync/firestore_network.dart';
+import 'package:business_ledger/core/sync/outbox.dart';
 import 'package:business_ledger/core/sync/outbox_entry.dart';
 import 'package:business_ledger/core/sync/outbox_executor.dart';
 import 'package:business_ledger/core/sync/outbox_store.dart';
+import 'package:business_ledger/core/sync/profile_sync.dart';
+import 'package:business_ledger/core/sync/sync_engine.dart';
 import 'package:business_ledger/core/sync/sync_identity.dart';
+import 'package:business_ledger/core/sync/sync_puller.dart';
+import 'package:business_ledger/core/sync/sync_settings.dart';
+import 'package:flutter_test/flutter_test.dart';
 
-/// Lets queued microtasks and zero-delay timers run.
-Future<void> settle([int turns = 30]) async {
+/// Lets queued microtasks and zero-delay timers run (local database work
+/// included).
+Future<void> settle([int turns = 200]) async {
   for (var i = 0; i < turns; i++) {
     await Future<void>.delayed(Duration.zero);
   }
@@ -33,26 +40,60 @@ class MemoryOutboxStore extends OutboxStore {
   }
 }
 
-class FakeNetwork extends FirestoreNetwork {
-  int enables = 0;
-  int disables = 0;
-  int waits = 0;
-
-  /// What `waitForPendingWrites` returns; done at once when `null`.
-  Completer<void>? pendingWrites;
+/// A local store that does nothing: for widget tests of the engine's UI,
+/// where a real database would outlive the fake clock.
+class NoopStore extends Fake implements LocalStore {
+  @override
+  Future<bool> claimFor(String uid) async => false;
 
   @override
-  Future<void> enable() async => enables++;
+  Future<void> deleteRow(Object? table, Map<String, Object?> key) async {}
 
   @override
-  Future<void> disable() async => disables++;
+  Future<void> setCursor(String businessId, Object? table, int seq) async {}
 
   @override
-  Future<void> waitForPendingWrites() {
-    waits++;
-    return pendingWrites?.future ?? Future<void>.value();
+  Future<void> clearPending(Object? table, Map<String, Object?> key) async {}
+}
+
+/// Counts pulls; succeeds unless [result] says otherwise.
+class FakePuller extends Fake implements SyncPuller {
+  int pulls = 0;
+  AppResult<void> result = const Success(null);
+
+  @override
+  Future<AppResult<void>> pull(String uid) async {
+    pulls++;
+    return result;
   }
 }
+
+class NoopProfiles extends Fake implements ProfileSync {
+  @override
+  Future<AppResult<void>> push(String uid) async => const Success(null);
+}
+
+/// An engine over fakes only (no database), for widget tests.
+SyncEngine fakeEngine({
+  required Outbox outbox,
+  required OutboxExecutor executor,
+  required ConnectivityService device,
+  required SyncSettings settings,
+  required SyncIdentity identity,
+  SyncPuller? puller,
+  FakeTimers? timers,
+}) => SyncEngine(
+  outbox,
+  executor,
+  device,
+  settings,
+  identity,
+  puller ?? FakePuller(),
+  NoopStore(),
+  NoopProfiles(),
+  timer: (timers ?? FakeTimers()).call,
+  pullTimer: FakeTimers().call,
+);
 
 /// A device network the test switches.
 class FakeConnectivityService implements ConnectivityService {

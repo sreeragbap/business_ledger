@@ -53,7 +53,7 @@ class SyncStatusBanner extends StatelessWidget {
         AppColors.warning,
         waiting > 0
             ? 'Offline · ${_changes(waiting)} will sync'
-            : status.firestoreHasPendingWrites
+            : status.hasLocalChanges
             ? 'Offline · changes will sync'
             : 'Offline · showing saved data',
       );
@@ -91,7 +91,7 @@ class SyncStatusBanner extends StatelessWidget {
         '${_changes(waiting)} waiting to sync',
       );
     }
-    if (status.firestoreHasPendingWrites) {
+    if (status.hasLocalChanges) {
       return const SyncBannerInfo(
         Icons.sync_rounded,
         AppColors.info,

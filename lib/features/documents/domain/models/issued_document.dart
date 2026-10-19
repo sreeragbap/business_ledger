@@ -1,10 +1,11 @@
+import 'package:business_ledger/core/domain/json_read.dart';
 import 'package:business_ledger/core/ledger/ledger_enums.dart';
 import 'package:business_ledger/features/documents/domain/models/document_snapshot.dart';
 import 'package:business_ledger/features/documents/domain/models/json_reader.dart';
 import 'package:equatable/equatable.dart';
 
-/// `businesses/{bid}/documents/{docId}`: an invoice, bill or receipt with
-/// its gap-free number and the snapshot it is rendered from.
+/// A `documents` row: an invoice, bill or receipt with its gap-free number
+/// and the snapshot it is rendered from.
 class IssuedDocument extends Equatable {
   const IssuedDocument({
     required this.id,
@@ -17,6 +18,10 @@ class IssuedDocument extends Equatable {
     this.issuedBy,
     this.voided = false,
   });
+
+  /// A Postgres row (snake_case; the snapshot keeps camelCase keys).
+  factory IssuedDocument.fromRow(Map<String, dynamic> row) =>
+      IssuedDocument.fromMap('${row['id']}', RowKeys.camelMap(row));
 
   factory IssuedDocument.fromMap(String id, Map<String, dynamic> map) {
     final json = JsonReader(map, 'documents/$id');

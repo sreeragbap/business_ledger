@@ -1,21 +1,20 @@
-import 'package:business_ledger/core/firebase/firestore_read.dart';
-import 'package:business_ledger/core/firebase/firestore_refs.dart';
+import 'package:business_ledger/core/domain/json_read.dart';
 import 'package:business_ledger/core/ledger/ledger_enums.dart';
 import 'package:business_ledger/core/ledger/ledger_math.dart';
 import 'package:business_ledger/features/transactions/domain/models/line_item.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:equatable/equatable.dart';
 
-/// `businesses/{bid}/transactions/{id}` (ARCHITECTURE §4).
+/// A `transactions` row (ARCHITECTURE §4).
 ///
-/// Named `LedgerTransaction` so it never collides with Firestore's
-/// `Transaction`. Drafts are written by the client (see `TransactionDraft`);
-/// every other field — the money figures, `paymentStatus`, `isOpen`, the
-/// name snapshots, `version` — is maintained by Cloud Functions.
+/// Named `LedgerTransaction` so it never collides with drift's and the
+/// database's transactions. Drafts are written by the client (see
+/// `TransactionDraft`); every other field — the money figures,
+/// `paymentStatus`, `isOpen`, the name snapshots, `version` — is maintained
+/// by the server's RPCs.
 ///
-/// Parsing is strict about meaning and safe about shape (`FirestoreRead`): a
+/// Parsing is strict about meaning and safe about shape (`JsonRead`): a
 /// missing or malformed field falls back instead of throwing, so one bad
-/// document can never break a list.
+/// row can never break a list.
 class LedgerTransaction extends Equatable {
   const LedgerTransaction({
     required this.id,
@@ -34,7 +33,6 @@ class LedgerTransaction extends Equatable {
     this.paymentMethod = '',
     this.date,
     this.dueDate,
-    this.dateTs,
     this.lineItems = const [],
     this.totalMinor = 0,
     this.paidMinor = 0,
@@ -62,11 +60,13 @@ class LedgerTransaction extends Equatable {
     this.hasPendingWrites = false,
   });
 
-  factory LedgerTransaction.fromFirestore(DocumentSnapshot<JsonMap> doc) =>
+  /// A Postgres row (snake_case), from the server or the local store.
+  /// `local_pending` (local only) becomes [hasPendingWrites].
+  factory LedgerTransaction.fromRow(Map<String, dynamic> row) =>
       LedgerTransaction.fromMap(
-        doc.id,
-        doc.data() ?? const {},
-        hasPendingWrites: doc.metadata.hasPendingWrites,
+        row.readString('id'),
+        RowKeys.camelMap(row),
+        hasPendingWrites: row['local_pending'] == true,
       );
 
   factory LedgerTransaction.fromMap(
@@ -76,7 +76,7 @@ class LedgerTransaction extends Equatable {
   }) {
     final direction = map.readOptionalString('direction');
     final paymentStatus = map.readOptionalString('paymentStatus');
-    final lines = map['lineItems'];
+    final lines = map.readList('lineItems');
     return LedgerTransaction(
       id: id,
       type: TransactionType.fromKey(map.readOptionalString('type')),
@@ -94,8 +94,7 @@ class LedgerTransaction extends Equatable {
       paymentMethod: map.readString('paymentMethod'),
       date: map.readOptionalString('date'),
       dueDate: map.readOptionalString('dueDate'),
-      dateTs: map.readDate('dateTs'),
-      lineItems: lines is List
+      lineItems: lines.isNotEmpty
           ? List.unmodifiable([
               for (final line in lines)
                 if (line is Map)
@@ -155,7 +154,6 @@ class LedgerTransaction extends Equatable {
   /// `yyyy-MM-dd`.
   final String? date;
   final String? dueDate;
-  final DateTime? dateTs;
   final List<LineItem> lineItems;
 
   final int totalMinor;
@@ -193,8 +191,8 @@ class LedgerTransaction extends Equatable {
   final String? cancelledBy;
   final String cancelReason;
 
-  /// Written on this device and not yet acknowledged by the server (an
-  /// offline draft). Not part of the stored document.
+  /// Changed on this device and not uploaded yet (`local_pending`: an
+  /// offline draft). Not a server column.
   final bool hasPendingWrites;
 
   bool get isDraft => status == TransactionStatus.draft;
@@ -258,7 +256,6 @@ class LedgerTransaction extends Equatable {
     paymentMethod,
     date,
     dueDate,
-    dateTs,
     lineItems,
     totalMinor,
     paidMinor,

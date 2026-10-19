@@ -12,10 +12,11 @@ import 'package:business_ledger/features/transactions/domain/models/transaction_
 
 /// Transactions of one business (ARCHITECTURE §2, §4, §5).
 ///
-/// * Drafts are written straight to Firestore, offline-first
-///   (`LocalFirstWriter`): they queue while offline and the rules check
-///   them on sync.
-/// * Everything that moves money is a callable. When the cloud is
+/// * Reads come from the on-device store, kept up to date by the sync
+///   engine.
+/// * Drafts are written to the device first and queued in the outbox
+///   (`LocalWriter`); row level security checks them when they sync.
+/// * Everything that moves money is an RPC. When the cloud is
 ///   unavailable (offline, or Cloud sync off) the action is queued in the
 ///   outbox instead and answered with [Queued]; the server re-validates it
 ///   on replay. Each takes the caller's `requestId`: one per user action,
@@ -25,13 +26,12 @@ import 'package:business_ledger/features/transactions/domain/models/transaction_
 abstract class TransactionRepository {
   const TransactionRepository();
 
-  /// A fresh document id, available offline. A new draft gets one before it
-  /// is saved.
+  /// A fresh row id (a uuid), available offline. A new draft gets one
+  /// before it is saved.
   String newTransactionId(String businessId);
 
-  /// A live window of up to [limit] entries for [filter]: an indexed query
-  /// (`TransactionQueryPlan`), then the rest of the filter and the sort on
-  /// the device. [today] (`yyyy-MM-dd`) decides overdue.
+  /// A live window of up to [limit] entries for [filter], from the
+  /// on-device store. [today] (`yyyy-MM-dd`) decides overdue.
   Stream<AppResult<TransactionPage>> watchTransactions(
     String businessId,
     TransactionFilter filter, {
@@ -57,8 +57,8 @@ abstract class TransactionRepository {
     String transactionId,
   );
 
-  /// Audit entries for one entity, newest first. Admin and owner only: the
-  /// rules refuse everyone else (`AppErrorKind.permissionDenied`).
+  /// Audit entries for one entity, newest first. Admin and owner only:
+  /// nobody else's device holds any (empty).
   Stream<AppResult<List<AuditEntry>>> watchAudit(
     String businessId,
     String entityId,
@@ -136,4 +136,8 @@ abstract class TransactionRepository {
   /// The signed-in user's queued actions for this business (oldest first),
   /// live: what the outbox still has to send.
   Stream<List<OutboxEntry>> watchQueued(String businessId);
+
+  /// Pull-to-refresh: asks the server for what changed (other devices,
+  /// other members). Completes when done, or at once when unreachable.
+  Future<void> refresh() async {}
 }

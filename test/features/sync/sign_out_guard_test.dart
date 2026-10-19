@@ -4,7 +4,6 @@ import 'package:business_ledger/core/domain/app_exception.dart';
 import 'package:business_ledger/core/domain/app_result.dart';
 import 'package:business_ledger/core/sync/outbox.dart';
 import 'package:business_ledger/core/sync/outbox_entry.dart';
-import 'package:business_ledger/core/sync/pending_writes_tracker.dart';
 import 'package:business_ledger/core/sync/sync_engine.dart';
 import 'package:business_ledger/core/sync/sync_settings.dart';
 import 'package:business_ledger/features/sync/logic/sync_cubit/sync_cubit.dart';
@@ -23,7 +22,6 @@ void main() {
   late FakeIdentity identity;
   late Outbox outbox;
   late FakeExecutor executor;
-  late PendingWritesTracker writes;
   late SyncEngine engine;
   late SyncCubit cubit;
   late List<bool> results;
@@ -34,7 +32,6 @@ void main() {
     bool online = false,
   }) async {
     SharedPreferences.setMockInitialValues({});
-    final network = FakeNetwork();
     device = FakeConnectivityService(isOnline: online);
     identity = FakeIdentity();
     outbox = Outbox(
@@ -48,20 +45,13 @@ void main() {
       ),
     );
     executor = FakeExecutor();
-    writes = PendingWritesTracker();
-    final settings = SyncSettings(
-      await SharedPreferences.getInstance(),
-      network,
-    );
-    engine = SyncEngine(
-      outbox,
-      executor,
-      network,
-      device,
-      settings,
-      identity,
-      writes,
-      timer: FakeTimers().call,
+    final settings = SyncSettings(await SharedPreferences.getInstance());
+    engine = fakeEngine(
+      outbox: outbox,
+      executor: executor,
+      device: device,
+      settings: settings,
+      identity: identity,
     );
     await engine.start();
     cubit = SyncCubit(engine, settings);
@@ -97,7 +87,6 @@ void main() {
     unawaited(outbox.dispose());
     unawaited(device.dispose());
     unawaited(identity.dispose());
-    unawaited(writes.dispose());
   }
 
   testWidgets('nothing waiting: no guard, sign-out may go ahead', (

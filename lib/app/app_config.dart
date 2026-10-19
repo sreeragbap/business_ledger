@@ -38,13 +38,30 @@ abstract final class AppConfig {
     Flavor.prod => prod.DefaultFirebaseOptions.currentPlatform,
   };
 
-  /// Every callable is deployed here (`functions/src/lib/callable.ts`).
-  static const String functionsRegion = 'asia-south1';
+  // --- Supabase (data) -----------------------------------------------------
+  // Project `unvpyjnotaukdxgmpytr` (Mumbai). The publishable key is meant to
+  // ship in the app: on its own it reads and writes nothing (row level
+  // security requires a verified Firebase ID token, `supabase/README.md`).
+  // Prod uses the same project as dev for now.
+
+  static String get supabaseUrl => switch (flavor) {
+    Flavor.dev || Flavor.prod => 'https://unvpyjnotaukdxgmpytr.supabase.co',
+  };
+
+  static String get supabasePublishableKey => switch (flavor) {
+    Flavor.dev ||
+    Flavor.prod => 'sb_publishable_pCp1Rex66kanRMkbingnNg_rbdkSzn_',
+  };
 
   // --- Local emulators -----------------------------------------------------
   // `flutter run -t lib/main_dev.dart --dart-define=USE_EMULATOR=true`
-  // Ports match `firebase.json`. A physical device needs the host machine's
-  // LAN address: add `--dart-define=EMULATOR_HOST=192.168.x.y`.
+  // Only the Firebase **Auth** emulator is used (port from `firebase.json`),
+  // for the "Continue with test account" sign-in. Data lives in Supabase,
+  // which does not accept the emulator's unsigned tokens: emulator mode
+  // needs a local Supabase (`npx supabase start`) configured to trust them,
+  // so against the hosted project it shows no businesses and every RPC
+  // answers "Sign in to continue". A physical device needs the host
+  // machine's LAN address: add `--dart-define=EMULATOR_HOST=192.168.x.y`.
 
   static const bool useEmulator = bool.fromEnvironment('USE_EMULATOR');
 
@@ -61,8 +78,6 @@ abstract final class AppConfig {
   }
 
   static const int authEmulatorPort = 9099;
-  static const int firestoreEmulatorPort = 8080;
-  static const int functionsEmulatorPort = 5001;
 
   /// Project id for emulator runs before `flutterfire configure`. The
   /// `demo-` prefix tells the emulators never to reach a real project.

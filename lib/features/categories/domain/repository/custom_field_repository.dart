@@ -1,7 +1,7 @@
 import 'package:business_ledger/core/domain/app_result.dart';
 import 'package:business_ledger/features/categories/domain/models/custom_field.dart';
 
-/// A business's custom fields. Direct, offline-friendly Firestore writes;
+/// A business's custom fields. Local-first, offline-friendly writes;
 /// never deleted, only archived.
 ///
 /// For the transaction form: for a chosen category, show

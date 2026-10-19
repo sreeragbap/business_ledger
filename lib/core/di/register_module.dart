@@ -1,12 +1,11 @@
-import 'package:business_ledger/app/app_config.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:cloud_functions/cloud_functions.dart';
+import 'package:business_ledger/core/database/app_database.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:injectable/injectable.dart';
 import 'package:local_auth/local_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 /// Third-party instances that cannot carry an injectable annotation.
 ///
@@ -18,12 +17,13 @@ abstract class RegisterModule {
   @lazySingleton
   FirebaseAuth get firebaseAuth => FirebaseAuth.instance;
 
+  /// Initialised by `bootstrap()` (`SupabaseSetup`) before DI is used.
   @lazySingleton
-  FirebaseFirestore get firestore => FirebaseFirestore.instance;
+  SupabaseClient get supabase => Supabase.instance.client;
 
+  /// The on-device store. Opened lazily on first query.
   @lazySingleton
-  FirebaseFunctions get functions =>
-      FirebaseFunctions.instanceFor(region: AppConfig.functionsRegion);
+  AppDatabase get database => AppDatabase.open();
 
   @lazySingleton
   GoogleSignIn get googleSignIn => GoogleSignIn.instance;

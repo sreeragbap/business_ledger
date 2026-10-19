@@ -11,9 +11,9 @@ import 'package:injectable/injectable.dart';
 
 part 'members_state.dart';
 
-/// The members screen: a live list, and the membership callables. Every
-/// change needs a connection (the callable client refuses offline with a
-/// clear message), and the server's message is shown as is on failure.
+/// The members screen: a live list, and the membership RPCs. Every change
+/// needs a connection (the RPC client refuses offline with a clear
+/// message), and the server's message is shown as is on failure.
 @injectable
 class MembersCubit extends Cubit<MembersState> {
   MembersCubit(this._repository) : super(const MembersState());

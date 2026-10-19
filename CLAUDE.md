@@ -2,16 +2,22 @@
 
 A digital ledger for small businesses. One user can run several businesses
 (a construction firm, a shop…), each with its own categories, fields, members,
-transactions and reports. Flutter app for **Android and iOS only**, backed by
-**Firebase** (Auth, Firestore, Cloud Functions).
+transactions and reports. Flutter app for **Android and iOS only**.
 
-This file is the starting context for every session. Deeper detail lives in:
+- **Data**: Supabase Postgres (tables, row-level security, SQL functions).
+- **On the phone**: SQLite via drift — every screen reads from it, so the app
+  works fully offline, and a sync engine keeps it in step with Supabase.
+- **Firebase**: only Google/Apple **sign-in**, Crashlytics, and (planned) push
+  notifications. Supabase trusts Firebase ID tokens (Third-party Auth).
+
+This file is the starting context for every session. Deeper detail:
 
 | Doc | Read it when |
 |---|---|
-| `docs/ARCHITECTURE.md` | changing data shapes, money rules, security, offline behaviour |
-| `docs/FUNCTIONS_API.md` | calling or changing a Cloud Function |
+| `supabase/README.md` | schema, RLS, RPC signatures, error contract, sync/pull contract |
+| `docs/ARCHITECTURE.md` | layering, offline/sync design, money rules, reports, documents |
 | `docs/PROGRESS.md` | deciding what to work on next |
+| `docs/FUNCTIONS_API.md` | historical: the Cloud Functions contract the RPCs replaced |
 
 ---
 
@@ -22,65 +28,75 @@ These come from the user. Follow them every time.
 1. **Ask before every commit and push.** Show the files and the commit message,
    wait for a clear "yes". Background agents must be told: *no git commands
    that change state*.
-2. **Ask before deploying** anything to Firebase (rules, indexes, functions):
-   it changes the live project.
+2. **Ask before changing anything live**: Supabase migrations (`db push`),
+   Supabase/Firebase settings, deploys. The permission system blocks
+   `npx supabase db push` for Claude — the user runs it.
 3. **Git identity**: push to `git@github-personal:sreeragbap/business_ledger.git`
-   (SSH alias for the user's personal GitHub). The repo-local identity is
+   (SSH alias for the user's personal GitHub). Repo-local identity
    `sreeragbap <72739970+sreeragbap@users.noreply.github.com>`. Never use the
    global work identity. `gh` CLI is not logged in.
-4. **Firebase CLI**: always add `--account sreeragk136@gmail.com`; the default
-   login is a different (work) account.
+4. **Firebase CLI**: always add `--account sreeragk136@gmail.com`.
 5. Before saying something works: `flutter analyze` (zero issues),
-   `flutter test`, and for server changes `npm test` + `npm run test:emulator`.
+   `flutter test`, and for database changes `cd supabase/tests && npm test`.
 
 ---
 
-## 2. How it works, in one picture
+## 2. How it works
 
 ```
- Phone (Flutter)                                Firebase
- ───────────────                                ────────
- Screens ─► Cubits ─► Repositories ─┬─► Firestore SDK ──────► Firestore
-                                    │   (drafts, settings;      (rules allow
-                                    │    local cache, works      drafts/config
-                                    │    offline)                only)
-                                    │
-                                    └─► CallableClient ──────► Cloud Functions
-                                        (money actions)         asia-south1
-                                          │                     (validate, apply,
-                                          └─ offline / sync off  update stats,
-                                             → Outbox (JSON on   audit, numbers)
-                                               device), replayed
-                                               later in order
+ Phone                                               Cloud
+ ─────                                               ─────
+ Screens ─► Cubits ─► Repositories
+                         │ read: drift streams (watch)
+                         ▼
+                    SQLite (drift) ◄──── SyncPuller ◄──── Supabase tables
+                         ▲              (rows with seq > cursor,   (RLS)
+                         │               per business, 500/page)
+                         │ write
+                    LocalWriter ──► Outbox (JSON file, FIFO) ──► SyncEngine
+                                     upsert / update rows   ──► PostgREST
+                                     rpc (money actions)    ──► SQL functions
+ Firebase Auth ── ID token ──► Supabase client accessToken
 ```
+
+- **Reads** always come from SQLite, never straight from the network.
+- **Drafts and settings** are written to SQLite at once and queued as
+  `upsert`/`update` outbox entries.
+- **Money actions** call SQL functions (RPCs): directly when online and nothing
+  is queued, otherwise queued behind earlier entries (so a draft's upsert lands
+  before its confirm). Each keeps its `requestId` → replays never apply twice.
+- **Pull**: profile → businesses (ones you lost access to are wiped locally) →
+  each table by `seq` cursor. Runs on start, sign-in, reconnect, sync on,
+  after pushes, pull-to-refresh, foreground, and every 60 s in foreground.
+- **Cloud sync switch** (Settings › Sync) gates the engine. `CloudAvailability`
+  = online && sync on && signed in. Refused entries → "Needs attention"
+  (retry/discard). Sign-out is blocked while entries are pending, and
+  sign-out (or a different user signing in) wipes the local store.
+- **Online-only** RPCs: `create_business`, member changes, `delete_category`,
+  `issue_document` — they need the server's answer immediately.
 
 **Life of a transaction**
-1. User fills the form → saved as a **draft** straight to Firestore (works
-   offline). Drafts never count in any total.
-2. **Confirm** → callable `confirmTransaction`. The server checks required
-   fields, computes the balance, writes the transaction, that day's
-   `stats/{date}` totals and an audit entry — all in one Firestore transaction.
+1. Form → **draft** row in SQLite → upserted to Supabase. Drafts never count.
+2. **Confirm** → `confirm_transaction`: validates, computes the balance, writes
+   the row, `daily_stats` delta and audit row in one database transaction.
    "Confirm as paid" also records the full payment.
-3. **Payments / refunds / credits** → `recordSettlement`. Re-reads the balance
-   inside the transaction, so two people paying at once can't overpay. A refund
-   also creates a linked "refund" entry for the list (it carries no money of
-   its own; the original does).
-4. **Edit** a confirmed one → `editConfirmedTransaction` with the version the
-   user saw; a newer version on the server = "changed by someone else, reload".
-5. **Cancel** → only after money is refunded; voids its documents; stays in
-   history.
-6. **Invoice / bill / receipt** → `issueDocument` gives a gap-free number and
-   stores a text snapshot; the PDF is drawn on the phone whenever needed.
-
-Every money call carries a `requestId`. Sending the same one twice returns the
-first result — that is what makes retries and offline replay safe.
+3. **Payment / refund / credit** → `record_settlement`: locks the row, so two
+   people paying at once can't overpay. A refund adds a linked "refund" entry
+   (no money of its own). Queued settlements also count in on-phone checks.
+4. **Edit** a confirmed one → `edit_confirmed_transaction` with the version the
+   user saw; newer on the server = "changed by someone else, reload".
+5. **Cancel** → `cancel_transaction`, only after money is refunded; voids its
+   documents; stays in history.
+6. **Invoice / bill / receipt** → `issue_document`: gap-free
+   `PREFIX-YYYY-NNNN` number + stored text snapshot; the PDF is drawn on the
+   phone whenever needed (nothing is stored as a file).
 
 ---
 
 ## 3. Money rules (the part that must never break)
 
 Amounts are **integers in minor units** (paise/cents) everywhere — `Money`,
-`amountMinor`. No doubles for money, ever.
+`*_minor` columns (bigint). No doubles for money, ever.
 
 With T = total, P = paid, R = refunded, C = credited (discounts):
 
@@ -90,16 +106,18 @@ effective   = T − C − R        income/expense actually recognised
 ```
 
 - A refund reduces income and returns cash, but never re-opens what's owed.
-- Payments + credits ≤ total; refunds ≤ payments; cancel only when net paid = 0.
+- Payments + credits ≤ total; refunds ≤ payments; cancel only when net paid = 0
+  (also enforced by table CHECKs).
 - **Overdue** is calculated (confirmed, owed > 0, due date passed) — never stored.
 - Drafts and cancelled entries never count in totals.
 - Line amount = quantity × rate, rounded half away from zero, per line.
 
-The rules exist **twice** and must stay identical:
-`lib/core/ledger/ledger_math.dart` (phone, for previews) and
-`functions/src/ledger.ts` (server, the authority). Both run the shared fixtures
-in `shared/ledger_cases.json`. **Change a rule → change both + the fixtures.**
-The same applies to search tokens (`search_tokens.dart` / `searchTokens()`).
+The rules exist **twice** and must stay identical: Dart
+`lib/core/ledger/ledger_math.dart` (on-phone checks and previews) and SQL
+`supabase/migrations/*_ledger_rules.sql` (the authority). Both run the shared
+fixtures `shared/ledger_cases.json` (`flutter test`, `supabase/tests`).
+**Change a rule → change both + the fixtures** (as a new migration). Same for
+search tokens. `functions/src/ledger.ts` is legacy until Phase C removes it.
 
 ---
 
@@ -107,16 +125,14 @@ The same applies to search tokens (`search_tokens.dart` / `searchTokens()`).
 
 | Decision | Why |
 |---|---|
-| **Migrating data to Supabase (Postgres)** — in progress. Firebase stays for **Google/Apple sign-in, push notifications (FCM) and Crashlytics**; Firestore, Cloud Functions and their rules/tests will be removed | User's decision (2026-10). Supabase project `unvpyjnotaukdxgmpytr` (Mumbai), URL `https://unvpyjnotaukdxgmpytr.supabase.co`, publishable key in app config. Supabase trusts Firebase ID tokens (Third-party Auth → Firebase) |
-| Money logic moves to **Postgres functions** (RPC) with row locks + `requests` idempotency | Replaces the 10 Cloud Functions; no Firebase Blaze plan needed |
-| Offline = **on-device SQLite (drift) + own sync** (outbox push, pull rows by `seq` cursor) | Supabase has no offline cache; keeps the Cloud sync switch and pending-sync UX |
-| **Text only — no file storage** (no attachments, no Cloud Storage, no stored PDFs) | User's choice; documents are re-drawn from their stored snapshot (deviation from brief §3/§8) |
-| Server decides all money changes; phone writes only drafts and settings | Security rules enforce it; a modified app can't fake balances |
-| **Local-first sync** with a per-device *Cloud sync* switch (Settings › Sync) | Works with no network; money actions queue as "Pending sync" and replay in order; refusals shown for retry/discard; queued payments count in on-phone checks; sign-out blocked while unsynced |
-| Not queueable: create business, members, delete category, issue document | They need the server's answer immediately (e.g. document numbers) |
-| Firestore in **asia-south1**, Functions in **asia-south1** | Users are in India |
-| Prod uses the same Firebase project as dev for now | Only one project exists |
-| Flavors are Dart-only: `-t lib/main_dev.dart` / `lib/main_prod.dart` | `lib/main.dart` throws on purpose |
+| **Supabase Postgres** for all data; Firestore and Cloud Functions are being removed | User's decision (2026-10). Project `unvpyjnotaukdxgmpytr` (Mumbai), URL `https://unvpyjnotaukdxgmpytr.supabase.co`, publishable key in `AppConfig` |
+| **Firebase stays for sign-in** (Google/Apple), Crashlytics and push notifications | User's decision; Supabase accepts Firebase ID tokens (`iss`/`aud` = `busineedger-ab7a1`), no `role` claim needed |
+| Money logic in **Postgres functions** (RPC), one transaction each, row locks, `requests` idempotency | Strongest guarantees for balances; no Firebase Blaze plan needed |
+| **Offline = SQLite (drift) + own sync** (outbox push, pull by `seq`) | Supabase has no offline cache; keeps the Cloud sync switch and pending-sync UX |
+| **Text only — no file storage** (no attachments, no stored PDFs) | User's choice; documents re-drawn from their snapshot (deviation from brief §3/§8) |
+| Clients write only drafts and configuration; everything that moves money goes through RPCs | RLS enforces it; a modified app can't fake balances |
+| Not queueable: create business, members, delete category, issue document | Need the server's answer immediately |
+| Flavors are Dart-only: `-t lib/main_dev.dart` / `lib/main_prod.dart` | `lib/main.dart` throws on purpose; prod uses the same backends for now |
 
 ---
 
@@ -124,55 +140,62 @@ The same applies to search tokens (`search_tokens.dart` / `searchTokens()`).
 
 ```
 lib/
-  app/             bootstrap, flavors, AppConfig, Firebase options
+  app/             bootstrap, flavors, AppConfig (Supabase URL/key), Firebase options
   core/
-    ledger/ money/ the money rules and Money type (pure, unit-tested)
-    firebase/      FirestoreRefs, CallableClient, tolerant readers, local-first writer
-    sync/          Cloud sync switch, outbox, SyncEngine (offline replay)
-    domain/        AppResult / AppException; bloc/ Status
+    ledger/ money/ money rules and Money type (pure, unit-tested)
+    database/      drift tables, AppDatabase, LocalStore DAO, row codec
+    supabase/      Supabase setup, RemoteTables / RemoteRpc interfaces, RpcClient
+    sync/          outbox, SyncEngine, SyncPuller, LocalWriter, profile sync,
+                   Cloud sync switch, CloudAvailability, status
+    domain/        AppResult / AppException (fromPostgrest), JsonRead; bloc/ Status
     router/ di/    auto_route + guards; get_it/injectable (generated files)
     theme/ widgets/ dark design tokens and App* components
   features/
-    auth/          Google + Apple sign-in (+ emulator test account)
+    auth/          Firebase Google + Apple sign-in (+ emulator test account)
     app_lock/      biometric lock
-    business/      businesses, members, roles, BusinessScopeCubit (current business)
+    business/      businesses, members, roles, BusinessScopeCubit
     categories/ parties/ projects/   per-business configuration
     transactions/  list, form, detail, settlements, pending-sync display
-    reports/ dashboard/   stats, receivables/payables, charts
+    reports/ dashboard/   daily stats, receivables/payables, charts
     documents/     invoice/bill/receipt PDFs from snapshots
     sync/          Sync screen, status banner, sign-out guard
-functions/src/     ledger.ts, schemas.ts, handlers/*, lib/* (roles, idempotency, stats…)
-firestore.rules  firestore.indexes.json  shared/ledger_cases.json
+supabase/
+  migrations/      schema, RLS, RPCs, ledger rules (apply in order)
+  tests/           PGlite + vitest: fixtures, RPC scenarios, RLS
+shared/ledger_cases.json   money-rule fixtures used by Dart and SQL
+functions/ firestore.*     legacy — removed in Phase C
 ```
 
-**Conventions** (copied from the reference app
-`/Users/sreeragkm/Documents/projects/easify_crm_flutter`):
-feature folders `domain/{const,models,repository,services}, logic, screens,
-widgets, index.dart`; `XRepository` (abstract) + `XService`
+**Conventions** (from the reference app
+`/Users/sreeragkm/Documents/projects/easify_crm_flutter`): feature folders
+`domain/{const,models,repository,services}, logic, screens, widgets,
+index.dart`; `XRepository` (abstract) + `XService`
 (`@LazySingleton(as: XRepository)`); `@injectable` cubits provided per route
 via `AutoRouteWrapper`; Equatable states with `copyWith` and a `Status` per
 operation; repositories return `AppResult<T>` and never throw; `package:`
 imports; very_good_analysis clean; tokens `AppColors/AppSpacing/AppRadius/
-AppTextStyles` with ScreenUtil (393×852). Firestore models use hand-written
-tolerant converters (`core/firebase/firestore_read.dart`), not json_serializable.
+AppTextStyles` with ScreenUtil (393×852). Models map Postgres rows with
+`fromRow`/`toRow` (snake_case columns; JSON columns keep camelCase keys).
+In widget tests, don't await `cubit.close()` inside fake-async.
 
 ---
 
 ## 6. Common tasks
 
-- **Add a field to transactions**: model + `toMap` (`features/transactions/
-  domain/models`), form/detail UI, `validDraft` in `firestore.rules` if clients
-  write it, server handler/schema if the server writes or validates it, rules
-  test, docs §3/§4.
-- **Change a money rule**: §3 above — both implementations + fixtures + tests.
-- **Add a callable**: schema in `functions/src/schemas.ts`, handler using
-  `handler()` + `once()` (idempotency) + `requireRole()`, export in `index.ts`,
-  integration test, `docs/FUNCTIONS_API.md`, then the Dart repository call
-  (decide: queueable through the outbox or online-only).
-- **New query with filters**: add the composite index to
-  `firestore.indexes.json` (only deployed with the user's OK).
-- **Generated code**: after changing injectable/auto_route annotations run
-  `dart run build_runner build`.
+- **Add a column** (e.g. to transactions): new migration in
+  `supabase/migrations/` (never edit an applied one) + RLS/`app.valid_draft` if
+  clients write it + RPC changes if the server writes it + supabase test;
+  drift table column (`lib/core/database/tables.dart`) + model
+  `fromRow`/`toRow`; run build_runner.
+- **Change a money rule**: §3 — Dart + SQL migration + fixtures + tests.
+- **Add an RPC**: migration (security definer, empty `search_path`, role
+  check, `requests` idempotency if it moves money, audit), test in
+  `supabase/tests`, entry in `RpcClient`, and decide: queueable through the
+  outbox or online-only. Document it in `supabase/README.md`.
+- **New screen query**: write it as a drift query (SQL on the phone); no
+  server indexes needed for reads.
+- **Generated code**: after changing drift tables or injectable/auto_route
+  annotations, run `dart run build_runner build`.
 
 ---
 
@@ -184,60 +207,68 @@ dart run build_runner build
 dart format lib test            # CI rejects unformatted code
 flutter analyze                 # must report no issues
 flutter test
-flutter run -t lib/main_dev.dart                                   # real Firebase
-flutter run -t lib/main_dev.dart --dart-define=USE_EMULATOR=true   # local emulators
-#   physical phone + emulators: add --dart-define=EMULATOR_HOST=<Mac LAN IP>
-#   emulator mode shows "Continue with test account"
+flutter run -t lib/main_dev.dart        # real Firebase sign-in + Supabase
 
-# Server (cd functions)
-npm run lint && npm run build && npm test   # includes the shared money fixtures
-npm run test:emulator                       # rules + integration tests (needs Java)
-npm run serve                               # build + start emulators for the app
+# Database (no Docker needed: tests run Postgres in-process via PGlite)
+cd supabase/tests && npm test
+npx supabase migration list             # local vs remote (read-only)
+npx supabase db push --dry-run          # what would be applied (read-only)
+npx supabase db push                    # user runs this (live change)
 ```
 
-VS Code launch configs: **Dev**, **Dev (Firebase emulators)**, **Prod**.
+Emulator mode (`--dart-define=USE_EMULATOR=true`) now only emulates Firebase
+Auth; hosted Supabase rejects emulator tokens, so it shows no data until a
+local Supabase setup exists. VS Code launch configs: Dev, Dev (emulators), Prod.
 
 ---
 
-## 8. Firebase project `busineedger-ab7a1` — current state
+## 8. Project state
 
-Done: iOS app `com.iocod.businessLedger` and Android app
-`com.iocod.business_ledger` registered; config files generated
-(`lib/app/firebase_options_*.dart`, `google-services.json`,
-`GoogleService-Info.plist`); Google sign-in enabled; iOS URL scheme set; this
-Mac's debug SHA-1/SHA-256 added to the Android app.
+**Supabase** `unvpyjnotaukdxgmpytr`: CLI logged in and linked.
+Migrations are written and tested but **not yet applied** — check with
+`npx supabase migration list`. The user must also enable **Authentication →
+Third-party Auth → Firebase** (project id `busineedger-ab7a1`).
 
-**Still to do by the user** (console): upgrade to **Blaze** (needed for
-Functions), **create the Firestore database in asia-south1**, Apple sign-in
-(Firebase provider + Apple Developer capability + Xcode team). Then, with the
-user's OK, deploy rules + indexes + functions. Release / Play signing will need
-its own SHA fingerprints.
+**Firebase** `busineedger-ab7a1`: iOS app `com.iocod.businessLedger` and
+Android app `com.iocod.business_ledger` registered; config files generated;
+Google sign-in enabled; iOS URL scheme set; this Mac's debug SHA-1/SHA-256 on
+the Android app. Firestore and Storage are **not** used (no database created —
+"Firestore NOT_FOUND" logs come only from old builds). Apple sign-in still
+needs the Firebase provider + Apple Developer capability + Xcode team.
+Release/Play signing will need its own SHA fingerprints.
 
-**Known gotchas**
+**Gotchas**
 - Re-running `flutterfire configure` brings back its Crashlytics
-  "upload symbols" build phase, which breaks debug builds. Re-apply our guard
+  "upload symbols" build phase, which breaks debug builds. Re-apply the guard
   in `ios/Runner.xcodeproj/project.pbxproj` (Release only, never fail), copy
-  the dev options file over the prod one, and re-indent `firebase.json`.
-- iOS Google Sign-In crashes the app natively without a client id + URL scheme;
+  the dev options over prod, re-indent `firebase.json`.
+- iOS Google Sign-In crashes natively without a client id + URL scheme;
   `AuthService` refuses with a message instead.
 - "No AppCheckProvider installed" in logs is a harmless warning.
+- iOS simulator builds may fail inside a sandbox on the SwiftPM cache; build
+  outside it.
 
 ---
 
 ## 9. What's next
 
-Supabase migration plan:
-- **Phase A** — `supabase/`: schema, RLS, RPCs, SQL ledger rules, tests in
-  PGlite (`cd supabase/tests && npm test`). Nothing applied remotely without OK.
-- **Phase B** — app data layer on drift + Supabase client (Firebase ID token as
-  access token), sync engine pull/push, error mapping from Postgres errors.
-- **Phase C** — remove Firestore, Cloud Functions, rules, indexes, emulator
-  tests; update CI/docs/this file.
-- **Phase D** — push notifications via FCM, sent from a Supabase Edge Function.
+Supabase migration:
+- **Phase A** ✅ database (`supabase/`), committed.
+- **Phase B** ✅ app on drift + Supabase (pending commit). Adds migration
+  `20261020090000_project_description.sql`.
+- **Live checks** after the user applies migrations and enables Firebase
+  third-party auth: first sign-in upserts `profiles`; `create_business` works
+  and the pull brings the business; draft → confirm → settle balances;
+  `PTnnn` errors arrive with JSON `details`; a role-less Firebase token runs
+  as `anon`.
+- **Phase C** — remove `functions/`, `firestore.rules`, `firestore.indexes.json`,
+  emulator tests and CI jobs; update docs.
+- **Phase D** — push notifications: FCM tokens in Supabase, sent from a
+  Supabase Edge Function; agree on events first.
 
-Until Phase C lands, sections 2–8 still describe the Firestore implementation.
+Known gaps: no import of old Firestore data (none exists in production);
+emulator mode shows no data; foreground polling ≈ 2 + 10 × businesses
+requests/min (Realtime could replace it later).
 
-
-- Stage 9: polish, error handling, an end-to-end test against the emulators.
-- Stage 10: deploy (after console steps + OK), test on real devices.
-- Unpushed local commits: check `git log origin/main..main` and ask before pushing.
+Then: Stage 9 (polish, error handling, end-to-end tests) and Stage 10 (device
+verification). Unpushed commits: `git log origin/main..main` — ask before pushing.

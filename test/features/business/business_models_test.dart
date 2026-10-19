@@ -6,13 +6,12 @@ import 'package:business_ledger/features/business/domain/const/time_zones.dart';
 import 'package:business_ledger/features/business/domain/models/business.dart';
 import 'package:business_ledger/features/business/domain/models/create_business_request.dart';
 import 'package:business_ledger/features/business/domain/models/member.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   final created = DateTime.utc(2026, 3, 1, 9, 30);
 
-  /// A business document as `createBusiness` writes it.
+  /// A business as the models read it (camelCase).
   Map<String, dynamic> seeded() => {
     'name': 'Rao Constructions',
     'description': 'Villas',
@@ -20,7 +19,6 @@ void main() {
     'timezone': 'Asia/Kuwait',
     'template': 'construction',
     'ownerId': 'u1',
-    'memberUids': ['u1', 'u2'],
     'settings': {
       'enabledStandardFields': ['party', 'lineItems', 'project'],
       'invoicePrefix': 'RC',
@@ -32,11 +30,42 @@ void main() {
       'taxId': '32ABCDE1234F1Z5',
     },
     'archived': false,
-    'createdAt': Timestamp.fromDate(created),
-    'updatedAt': Timestamp.fromDate(created),
+    'createdAt': created.toIso8601String(),
+    'updatedAt': created.toIso8601String(),
+  };
+
+  /// The same business as a `businesses` row from Supabase.
+  Map<String, dynamic> row() => {
+    'id': 'b1',
+    'name': 'Rao Constructions',
+    'description': 'Villas',
+    'currency_code': 'KWD',
+    'currency_decimals': 3,
+    'currency_symbol': 'KWD ',
+    'timezone': 'Asia/Kuwait',
+    'template': 'construction',
+    'owner_id': 'u1',
+    'settings': seeded()['settings'],
+    'archived': false,
+    'created_at': '2026-03-01T09:30:00+00:00',
+    'updated_at': '2026-03-01T09:30:00+00:00',
+    'seq': 17,
   };
 
   group('Business.fromMap', () {
+    test('a Postgres row reads the same as the map', () {
+      final business = Business.fromRow(row());
+      expect(business.id, 'b1');
+      expect(
+        business.currency,
+        const Currency(code: 'KWD', decimals: 3, symbol: 'KWD '),
+      );
+      expect(business.ownerId, 'u1');
+      expect(business.settings.invoicePrefix, 'RC');
+      expect(business.createdAt, created.toLocal());
+      expect(business, Business.fromMap('b1', seeded()));
+    });
+
     test('reads every field written by createBusiness', () {
       final business = Business.fromMap('b1', seeded());
       expect(business.id, 'b1');
@@ -47,7 +76,6 @@ void main() {
       );
       expect(business.timezone, 'Asia/Kuwait');
       expect(business.template, BusinessTemplate.construction);
-      expect(business.memberUids, ['u1', 'u2']);
       expect(business.settings.invoicePrefix, 'RC');
       expect(business.settings.taxId, '32ABCDE1234F1Z5');
       expect(business.isEnabled(StandardField.project), isTrue);
@@ -59,7 +87,6 @@ void main() {
       final business = Business.fromMap('b1', const {
         'name': 42,
         'currency': 'INR',
-        'memberUids': ['u1', 3, null],
         'settings': {'enabledStandardFields': 'party'},
         'archived': 'yes',
         'createdAt': 'yesterday',
@@ -68,7 +95,6 @@ void main() {
       expect(business.currency, Currency.inr);
       expect(business.timezone, TimeZones.fallback);
       expect(business.template, BusinessTemplate.blank);
-      expect(business.memberUids, ['u1']);
       expect(business.settings.enabledStandardFieldKeys, isEmpty);
       expect(business.settings.invoicePrefix, 'INV');
       expect(business.archived, isFalse);
@@ -111,18 +137,25 @@ void main() {
     });
   });
 
-  test('detailsUpdate writes only rule-allowed keys, settings by path', () {
+  test('detailsUpdate writes only the client columns; unknown settings '
+      'keys survive', () {
     final update = Business.detailsUpdate(
       name: '  New name ',
       description: 'd',
       timezone: 'Asia/Dubai',
       settings: const BusinessSettings(invoicePrefix: 'X'),
+      storedSettings: const {'invoicePrefix': 'OLD', 'futureKey': 1},
     );
-    final topLevel = update.keys.map((key) => key.split('.').first).toSet();
-    expect(topLevel, {'name', 'description', 'timezone', 'settings'});
+    expect(update.keys.toSet(), {
+      'name',
+      'description',
+      'timezone',
+      'settings',
+    });
     expect(update['name'], 'New name');
-    expect(update['settings.invoicePrefix'], 'X');
-    expect(update.containsKey('settings'), isFalse);
+    final settings = update['settings']! as Map<String, Object?>;
+    expect(settings['invoicePrefix'], 'X');
+    expect(settings['futureKey'], 1);
   });
 
   group('Member', () {
@@ -135,6 +168,23 @@ void main() {
         addedBy: 'u1',
       );
       expect(Member.fromMap('u2', member.toMap()), member);
+    });
+
+    test('reads a members row', () {
+      final member = Member.fromRow(const {
+        'business_id': 'b1',
+        'user_id': 'u2',
+        'role': 'editor',
+        'email': 'e@example.com',
+        'display_name': 'Esha',
+        'photo_url': '',
+        'added_by': 'u1',
+        'added_at': '2026-03-01T09:30:00+00:00',
+      });
+      expect(member.uid, 'u2');
+      expect(member.role, Role.editor);
+      expect(member.displayName, 'Esha');
+      expect(member.addedAt, DateTime.utc(2026, 3, 1, 9, 30).toLocal());
     });
 
     test('an unknown role reads as viewer', () {

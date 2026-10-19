@@ -45,7 +45,8 @@ class PendingSettlements extends Equatable {
         case OutboxKind.confirm:
           confirm = true;
           settles = settles || entry.payload['settleNow'] == true;
-        case OutboxKind.edit:
+        case OutboxKind.edit || OutboxKind.upsert || OutboxKind.update:
+          // No money effect (a draft's own row write, or an edit).
           break;
       }
     }

@@ -4,7 +4,7 @@ enum TransactionFormMode {
   /// A new entry, not yet saved.
   create,
 
-  /// A stored draft: saved straight to Firestore, works offline.
+  /// A stored draft: saved on the device first, works offline.
   editDraft,
 
   /// A confirmed entry: changes go through `editConfirmedTransaction`.

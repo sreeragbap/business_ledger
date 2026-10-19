@@ -9,7 +9,6 @@ import 'package:business_ledger/features/transactions/domain/models/settlement.d
 import 'package:business_ledger/features/transactions/domain/models/settlement_rules.dart';
 import 'package:business_ledger/features/transactions/domain/models/transaction_draft.dart';
 import 'package:business_ledger/features/transactions/domain/models/transaction_filter.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'transaction_fixtures.dart';
@@ -27,7 +26,7 @@ const _forbidden = {
 void main() {
   group('LedgerTransaction.fromMap', () {
     test('reads a confirmed document written by the functions', () {
-      final tx = LedgerTransaction.fromMap('t1', {
+      final tx = LedgerTransaction.fromMap('t1', const {
         'type': 'sale',
         'direction': 'in',
         'status': 'confirmed',
@@ -37,8 +36,7 @@ void main() {
         'description': 'Cement',
         'date': '2026-10-01',
         'dueDate': '2026-10-10',
-        'dateTs': Timestamp.fromDate(DateTime.utc(2026, 10)),
-        'lineItems': const [
+        'lineItems': [
           {
             'description': 'Bags',
             'quantityMilli': 2500,
@@ -54,8 +52,8 @@ void main() {
         'outstandingMinor': 65000,
         'paymentStatus': 'partiallyRefunded',
         'isOpen': true,
-        'customFields': const {'f1': 'Site A'},
-        'attachments': const ['businesses/b1/attachments/t1/1_bill.pdf'],
+        'customFields': {'f1': 'Site A'},
+        'attachments': ['businesses/b1/attachments/t1/1_bill.pdf'],
         'version': 4,
         'createdBy': 'u1',
         'confirmedBy': 'u2',
@@ -240,7 +238,6 @@ void main() {
           'amountMinor': 90000,
         },
       );
-      expect(map['dateTs'], Timestamp.fromDate(DateTime.utc(2026, 10, 14)));
       expect(map['customFields'], {'f1': 'Site A', 'f4': false});
       expect(map['direction'], 'in');
       expect(map['categoryName'], 'Sales');
@@ -285,6 +282,114 @@ void main() {
         date: '2026-10-14',
       );
       expect(blank.toMap(uid: 'u', isNew: true, now: 0)['totalMinor'], 0);
+    });
+
+    test('toRow: a new draft is the whole row app.valid_draft accepts', () {
+      final row = draft().toRow(uid: 'u1', businessId: 'b1', isNew: true);
+      expect(row['id'], 't9');
+      expect(row['business_id'], 'b1');
+      expect(row['created_by'], 'u1');
+      expect(row['version'], 0);
+      expect(row['status'], 'draft');
+      expect(row['total_minor'], 90500);
+      expect(row['due_date'], '2026-10-30');
+      expect(row['custom_fields'], {'f1': 'Site A', 'f4': false});
+      expect((row['line_items']! as List).first, {
+        'description': 'Bags',
+        'quantityMilli': 2000,
+        'rateMinor': 45000,
+        'amountMinor': 90000,
+      });
+      // Nothing the server maintains, nothing camelCase at the top level.
+      for (final key in [
+        'paid_minor',
+        'refunded_minor',
+        'credited_minor',
+        'effective_minor',
+        'outstanding_minor',
+        'payment_status',
+        'is_open',
+        'confirmed_at',
+        'linked_transaction_id',
+        'created_at',
+        'updated_at',
+        'seq',
+      ]) {
+        expect(row.containsKey(key), isFalse, reason: key);
+      }
+      expect(row.keys.where((key) => key.contains(RegExp('[A-Z]'))), isEmpty);
+    });
+
+    test('toRow: an update never touches id, business or creator', () {
+      final row = draft().toRow(uid: 'u2', businessId: 'b1', isNew: false);
+      for (final key in ['id', 'business_id', 'created_by', 'version']) {
+        expect(row.containsKey(key), isFalse, reason: key);
+      }
+      expect(row['description'], 'Cement bags');
+    });
+  });
+
+  group('LedgerTransaction.fromRow', () {
+    test('reads a Postgres row (and its local pending mark)', () {
+      final tx = LedgerTransaction.fromRow(const {
+        'id': 't1',
+        'business_id': 'b1',
+        'type': 'sale',
+        'direction': 'in',
+        'status': 'confirmed',
+        'category_id': 'c1',
+        'party_name': 'Asha',
+        'date': '2026-10-01',
+        'due_date': '2026-10-10',
+        'line_items': [
+          {
+            'description': 'Bags',
+            'quantityMilli': 2500,
+            'rateMinor': 40000,
+            'amountMinor': 100000,
+          },
+        ],
+        'total_minor': 100000,
+        'paid_minor': 30000,
+        'outstanding_minor': 70000,
+        'payment_status': 'partiallyPaid',
+        'is_open': true,
+        'custom_fields': {'f1': 'x'},
+        'search_tokens': ['ash', 'asha'],
+        'version': 3,
+        'created_by': 'u1',
+        'created_at': '2026-10-01T05:00:00+00:00',
+        'local_pending': true,
+      });
+      expect(tx.id, 't1');
+      expect(tx.categoryId, 'c1');
+      expect(tx.dueDate, '2026-10-10');
+      expect(tx.lineItems.single.amountMinor, 100000);
+      expect(tx.outstandingMinor, 70000);
+      expect(tx.paymentStatus, PaymentStatus.partiallyPaid);
+      expect(tx.isOpen, isTrue);
+      expect(tx.customFields, {'f1': 'x'});
+      expect(tx.searchTokens, ['ash', 'asha']);
+      expect(tx.version, 3);
+      expect(tx.createdAt, DateTime.utc(2026, 10, 1, 5).toLocal());
+      expect(tx.hasPendingWrites, isTrue);
+    });
+
+    test('JSON columns stored as text read the same', () {
+      final tx = LedgerTransaction.fromRow(const {
+        'id': 't1',
+        'type': 'expense',
+        'status': 'draft',
+        'line_items':
+            '[{"description":"x","quantityMilli":1000,'
+            '"rateMinor":5,"amountMinor":5}]',
+        'custom_fields': '{"f1":"y"}',
+        'search_tokens': '["x"]',
+      });
+      expect(tx.lineItems.single.amountMinor, 5);
+      expect(tx.customFields, {'f1': 'y'});
+      expect(tx.searchTokens, ['x']);
+      expect(tx.hasPendingWrites, isFalse);
     });
   });
 

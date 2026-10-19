@@ -7,7 +7,6 @@ import 'package:business_ledger/features/categories/domain/models/custom_field.d
 import 'package:business_ledger/features/parties/domain/const/party_kind.dart';
 import 'package:business_ledger/features/parties/domain/models/party.dart';
 import 'package:business_ledger/features/projects/domain/models/project.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -37,16 +36,16 @@ void main() {
 
     test('reads the seeded shape, timestamps included', () {
       final at = DateTime.utc(2026);
-      final read = Category.fromMap('c2', {
+      final read = Category.fromMap('c2', const {
         'name': 'Sales',
         'kind': 'income',
         'icon': 'sell',
         'colour': 'green',
-        'fieldIds': const <Object?>[],
+        'fieldIds': <Object?>[],
         'sortOrder': 0,
         'archived': false,
-        'createdAt': Timestamp.fromDate(at),
-        'updatedAt': Timestamp.fromDate(at),
+        'createdAt': '2026-01-01T00:00:00+00:00',
+        'updatedAt': '2026-01-01T00:00:00+00:00',
       });
       expect(read.kind, CategoryKind.income);
       expect(read.icon, CategoryIcon.sell);

@@ -2,7 +2,7 @@ import 'package:business_ledger/core/money/currency.dart';
 import 'package:business_ledger/features/business/domain/const/business_template.dart';
 import 'package:equatable/equatable.dart';
 
-/// Input of the `createBusiness` callable (`docs/FUNCTIONS_API.md`).
+/// Input of the `create_business` RPC (`supabase/README.md`, RPCs).
 class CreateBusinessRequest extends Equatable {
   const CreateBusinessRequest({
     required this.requestId,

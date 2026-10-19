@@ -1,7 +1,7 @@
 import 'package:business_ledger/core/domain/app_result.dart';
 import 'package:business_ledger/features/parties/domain/models/party.dart';
 
-/// A business's customers and suppliers. Direct, offline-friendly Firestore
+/// A business's customers and suppliers. Local-first, offline-friendly
 /// writes; archived rather than deleted.
 ///
 /// For the transaction form: [watchParties], filter with

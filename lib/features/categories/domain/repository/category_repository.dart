@@ -3,9 +3,9 @@ import 'package:business_ledger/features/categories/domain/models/category.dart'
 
 /// A business's categories.
 ///
-/// Writes are direct Firestore writes (offline-friendly: they succeed once
-/// queued locally, see `LocalFirstWriter`), except [delete], which is a
-/// callable because only the server can prove nothing references it.
+/// Writes are local-first (offline-friendly: they succeed once stored on the
+/// device and queued, see `LocalWriter`), except [delete], which is an RPC
+/// because only the server can prove nothing references it.
 ///
 /// For the transaction form: use [watchCategories], offer the ones that are
 /// not archived and whose `kind.allows(direction)`, and resolve a stored
@@ -36,7 +36,7 @@ abstract class CategoryRepository {
     int? sortOrder,
   });
 
-  /// `deleteCategory` callable. Online only. Fails with
+  /// `delete_category` RPC. Online only. Fails with
   /// `AppErrorKind.inUse` when any transaction references the category; the
   /// remedy is to archive it.
   Future<AppResult<void>> delete(String businessId, String id);

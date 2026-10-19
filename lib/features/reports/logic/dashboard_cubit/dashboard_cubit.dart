@@ -19,7 +19,7 @@ part 'dashboard_state.dart';
 
 /// The home screen's figures for one business: period totals, cash, what
 /// is owed each way, pending/overdue and recent entries. Live: every list
-/// follows its Firestore query.
+/// follows its query on the on-device store.
 @injectable
 class DashboardCubit extends Cubit<DashboardState> {
   DashboardCubit(this._repository) : super(DashboardState.initial());
@@ -100,8 +100,8 @@ class DashboardCubit extends Cubit<DashboardState> {
     await _watchStats();
   }
 
-  /// Receivables and payables are an aggregate, not a live query: refreshed
-  /// on start and on pull-to-refresh.
+  /// Receivables and payables are an aggregate, not a live query: computed
+  /// on start and after a pull-to-refresh.
   Future<void> loadBalances() async {
     final businessId = state.businessId;
     if (businessId == null) return;
@@ -120,7 +120,13 @@ class DashboardCubit extends Cubit<DashboardState> {
     );
   }
 
-  Future<void> refresh() => loadBalances();
+  /// Pulls what changed on the server, then recomputes the balances (the
+  /// live parts update by themselves).
+  Future<void> refresh() async {
+    await _repository.refresh();
+    if (isClosed) return;
+    await loadBalances();
+  }
 
   Future<void> _watchStats() async {
     final businessId = state.businessId;

@@ -1,11 +1,10 @@
-import 'package:business_ledger/core/firebase/firestore_read.dart';
-import 'package:business_ledger/core/firebase/firestore_refs.dart';
+import 'package:business_ledger/core/domain/json_read.dart';
 import 'package:business_ledger/features/business/domain/const/role.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:equatable/equatable.dart';
 
-/// `businesses/{bid}/members/{uid}`. Written only by functions (`addMember`,
-/// `updateMemberRole`, `removeMember`, `createBusiness`); read-only here.
+/// A `members` row. Written only by RPCs (`add_member`,
+/// `update_member_role`, `remove_member`, `create_business`); read-only
+/// here.
 class Member extends Equatable {
   const Member({
     required this.uid,
@@ -17,8 +16,9 @@ class Member extends Equatable {
     this.addedAt,
   });
 
-  factory Member.fromFirestore(DocumentSnapshot<JsonMap> doc) =>
-      Member.fromMap(doc.id, doc.data() ?? const {});
+  /// A Postgres row (snake_case).
+  factory Member.fromRow(Map<String, dynamic> row) =>
+      Member.fromMap(row.readString('user_id'), RowKeys.camelMap(row));
 
   factory Member.fromMap(String uid, Map<String, dynamic> map) => Member(
     uid: uid,

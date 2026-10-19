@@ -12,9 +12,9 @@ abstract class AuthRepository {
 
   AppUser? get currentUser;
 
-  /// Runs the provider sheet, signs in to Firebase and makes sure
-  /// `users/{uid}` exists. A dismissed sheet comes back as a [Failure] whose
-  /// error `isCancelled`, which the UI treats as "no action".
+  /// Runs the provider sheet, signs in to Firebase and upserts the user's
+  /// `profiles` row (Supabase). A dismissed sheet comes back as a [Failure]
+  /// whose error `isCancelled`, which the UI treats as "no action".
   Future<AppResult<AppUser>> signIn(SocialSignInMethod method);
 
   Future<AppResult<void>> signOut();

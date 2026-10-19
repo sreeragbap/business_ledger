@@ -1,19 +1,22 @@
 import 'dart:async';
 
+import 'package:business_ledger/core/database/app_database.dart';
+import 'package:business_ledger/core/database/local_store.dart';
+import 'package:business_ledger/core/database/local_streams.dart';
+import 'package:business_ledger/core/database/sync_table.dart';
 import 'package:business_ledger/core/domain/app_exception.dart';
 import 'package:business_ledger/core/domain/app_result.dart';
-import 'package:business_ledger/core/firebase/callable_client.dart';
-import 'package:business_ledger/core/firebase/firestore_refs.dart';
-import 'package:business_ledger/core/firebase/firestore_streams.dart';
-import 'package:business_ledger/core/firebase/local_first_writer.dart';
+import 'package:business_ledger/core/firebase/request_ids.dart';
 import 'package:business_ledger/core/ledger/ledger_enums.dart';
 import 'package:business_ledger/core/sync/action_outcome.dart';
 import 'package:business_ledger/core/sync/cloud_availability.dart';
+import 'package:business_ledger/core/sync/local_writer.dart';
 import 'package:business_ledger/core/sync/outbox_entry.dart';
 import 'package:business_ledger/core/sync/sync_engine.dart';
+import 'package:business_ledger/core/sync/sync_identity.dart';
 import 'package:business_ledger/core/sync/sync_queue.dart';
+import 'package:business_ledger/features/transactions/domain/const/transaction_filters.dart';
 import 'package:business_ledger/features/transactions/domain/models/audit_entry.dart';
-import 'package:business_ledger/features/transactions/domain/models/ledger_dates.dart';
 import 'package:business_ledger/features/transactions/domain/models/ledger_transaction.dart';
 import 'package:business_ledger/features/transactions/domain/models/settlement.dart';
 import 'package:business_ledger/features/transactions/domain/models/transaction_draft.dart';
@@ -21,68 +24,110 @@ import 'package:business_ledger/features/transactions/domain/models/transaction_
 import 'package:business_ledger/features/transactions/domain/models/transaction_query_plan.dart';
 import 'package:business_ledger/features/transactions/domain/models/transaction_results.dart';
 import 'package:business_ledger/features/transactions/domain/repository/transaction_repository.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:drift/drift.dart';
 import 'package:injectable/injectable.dart';
 
 @LazySingleton(as: TransactionRepository)
 class TransactionService implements TransactionRepository {
   TransactionService(
-    this._refs,
+    this._store,
     this._writer,
-    this._auth,
-    this._availability,
+    this._identity,
     this._queue,
     this._engine,
   );
 
-  final FirestoreRefs _refs;
-  final LocalFirstWriter _writer;
-  final FirebaseAuth _auth;
-  final CloudAvailability _availability;
+  final LocalStore _store;
+  final LocalWriter _writer;
+  final SyncIdentity _identity;
   final SyncQueue _queue;
   final SyncEngine _engine;
 
-  @override
-  String newTransactionId(String businessId) =>
-      _refs.transactions(businessId).doc().id;
+  AppDatabase get _db => _store.db;
 
-  /// The Firestore query for [plan]. Every shape it can produce has an index
-  /// (see `TransactionQueryPlan`).
-  Query<JsonMap> queryFor(
+  @override
+  String newTransactionId(String businessId) => RequestIds.rowId();
+
+  /// The local query for [filter]: every part of it runs in SQLite (search
+  /// included), so a page is always [limit] matching entries.
+  /// `TransactionFilter.apply` then re-checks and orders the page.
+  SimpleSelectStatement<$TransactionsTable, TransactionRowData> queryFor(
     String businessId,
-    TransactionQueryPlan plan,
-    int limit,
-  ) {
-    Query<JsonMap> query = _refs.transactions(businessId);
-    for (final entry in plan.equals.entries) {
-      query = query.where(entry.key, isEqualTo: entry.value);
-    }
-    if (plan.searchToken case final token?) {
-      query = query.where('searchTokens', arrayContains: token);
-    }
-    if (plan.openOnly) query = query.where('isOpen', isEqualTo: true);
-    if (plan.dueBefore case final day?) {
-      query = query.where(TransactionQueryPlan.dueField, isLessThan: day);
-    }
-    if (plan.orderBy == TransactionQueryPlan.dateField) {
-      if (plan.from case final from?) {
-        query = query.where(
-          TransactionQueryPlan.dateField,
-          isGreaterThanOrEqualTo: LedgerDates.timestamp(from),
-        );
-      }
-      if (plan.to case final to?) {
-        query = query.where(
-          TransactionQueryPlan.dateField,
-          isLessThanOrEqualTo: LedgerDates.timestamp(to),
-        );
-      }
-    }
-    return query
-        .orderBy(plan.orderBy, descending: plan.descending)
-        .limit(limit);
+    TransactionFilter filter, {
+    required int limit,
+    required String today,
+  }) {
+    final query = _db.select(_db.transactions)
+      ..where((t) {
+        var where = t.businessId.equals(businessId) & t.deletedAt.isNull();
+        if (filter.status case final status?) {
+          where &= t.status.equals(status.key);
+        }
+        if (filter.type case final type?) where &= t.type.equals(type.key);
+        if (filter.categoryId case final id?) where &= t.categoryId.equals(id);
+        if (filter.projectId case final id?) where &= t.projectId.equals(id);
+        if (filter.partyId case final id?) where &= t.partyId.equals(id);
+        if (filter.from case final from?) {
+          where &= t.date.isBiggerOrEqualValue(from);
+        }
+        if (filter.to case final to?) where &= t.date.isSmallerOrEqualValue(to);
+        switch (filter.payment) {
+          case null:
+            break;
+          case PaymentFilter.open:
+            where &=
+                t.status.equals(TransactionStatus.confirmed.key) &
+                t.outstandingMinor.isBiggerThanValue(0);
+          case PaymentFilter.overdue:
+            where &=
+                t.status.equals(TransactionStatus.confirmed.key) &
+                t.outstandingMinor.isBiggerThanValue(0) &
+                t.dueDate.isSmallerThanValue(today);
+          case final PaymentFilter stored:
+            where &= t.paymentStatus.equals(stored.stored!.key);
+        }
+        for (final word in TransactionSearch.words(filter.search)) {
+          where &= _hasToken(word);
+        }
+        return where;
+      })
+      ..orderBy(_order(filter.sort))
+      ..limit(limit);
+    return query;
   }
+
+  /// `search_tokens` (a JSON array) contains [word]. Words are lowercase
+  /// letters and digits (`TransactionSearch.words`); quotes are escaped
+  /// anyway.
+  static Expression<bool> _hasToken(String word) => CustomExpression<bool>(
+    'EXISTS (SELECT 1 FROM json_each(transactions.search_tokens) '
+    "WHERE json_each.value = '${word.replaceAll("'", "''")}')",
+  );
+
+  static List<OrderClauseGenerator<$TransactionsTable>> _order(
+    TransactionSort sort,
+  ) => switch (sort) {
+    TransactionSort.dateDesc => [
+      (t) => OrderingTerm.desc(t.date),
+      (t) => OrderingTerm.desc(t.createdAt),
+    ],
+    TransactionSort.dateAsc => [
+      (t) => OrderingTerm.asc(t.date),
+      (t) => OrderingTerm.asc(t.createdAt),
+    ],
+    TransactionSort.amountDesc => [
+      (t) => OrderingTerm.desc(t.totalMinor),
+      (t) => OrderingTerm.desc(t.date),
+    ],
+    TransactionSort.amountAsc => [
+      (t) => OrderingTerm.asc(t.totalMinor),
+      (t) => OrderingTerm.desc(t.date),
+    ],
+  };
+
+  static List<LedgerTransaction> _transactions(
+    List<TransactionRowData> rows,
+  ) => [for (final row in rows) LedgerTransaction.fromRow(rowOf(row))];
 
   @override
   Stream<AppResult<TransactionPage>> watchTransactions(
@@ -90,84 +135,117 @@ class TransactionService implements TransactionRepository {
     TransactionFilter filter, {
     required int limit,
     required String today,
-  }) {
-    final plan = TransactionQueryPlan.of(filter, today: today);
-    return FirestoreStreams.list(
-      queryFor(businessId, plan, limit),
-      LedgerTransaction.fromFirestore,
-    ).map(
-      (result) => result.map(
-        (docs) => TransactionPage(
-          items: filter.apply(docs, today),
-          fetched: docs.length,
-          limit: limit,
-          plan: plan,
-        ),
-      ),
-    );
-  }
+  }) => LocalStreams.watch(
+    queryFor(businessId, filter, limit: limit, today: today).watch(),
+    (rows) {
+      final items = _transactions(rows);
+      return TransactionPage(
+        items: filter.apply(items, today),
+        fetched: items.length,
+        limit: limit,
+        plan: TransactionQueryPlan.local,
+      );
+    },
+  );
 
   @override
   Stream<AppResult<LedgerTransaction?>> watchTransaction(
     String businessId,
     String transactionId,
-  ) => FirestoreStreams.doc(
-    _refs.transaction(businessId, transactionId),
-    LedgerTransaction.fromFirestore,
+  ) => LocalStreams.single(
+    (_db.select(_db.transactions)..where(
+          (t) =>
+              t.id.equals(transactionId) &
+              t.businessId.equals(businessId) &
+              t.deletedAt.isNull(),
+        ))
+        .watchSingleOrNull(),
+    _store.watchPulled(),
+    (row) => LedgerTransaction.fromRow(rowOf(row)),
   );
 
   @override
   Stream<AppResult<List<Settlement>>> watchSettlements(
     String businessId,
     String transactionId,
-  ) => FirestoreStreams.list(
-    _refs
-        .settlements(businessId, transactionId)
-        .orderBy('createdAt', descending: true),
-    Settlement.fromFirestore,
+  ) => LocalStreams.watch(
+    (_db.select(_db.settlements)
+          ..where(
+            (s) =>
+                s.businessId.equals(businessId) &
+                s.transactionId.equals(transactionId),
+          )
+          ..orderBy([(s) => OrderingTerm.desc(s.createdAt)]))
+        .watch(),
+    (rows) => List<Settlement>.unmodifiable([
+      for (final row in rows) Settlement.fromRow(rowOf(row)),
+    ]),
   );
 
   @override
   Stream<AppResult<List<LedgerTransaction>>> watchLinked(
     String businessId,
     String transactionId,
-  ) => FirestoreStreams.list(
-    _refs
-        .transactions(businessId)
-        .where('linkedTransactionId', isEqualTo: transactionId)
-        .orderBy(TransactionQueryPlan.dateField, descending: true),
-    LedgerTransaction.fromFirestore,
+  ) => LocalStreams.watch(
+    (_db.select(_db.transactions)
+          ..where(
+            (t) =>
+                t.businessId.equals(businessId) &
+                t.linkedTransactionId.equals(transactionId),
+          )
+          ..orderBy([
+            (t) => OrderingTerm.desc(t.date),
+            (t) => OrderingTerm.desc(t.createdAt),
+          ]))
+        .watch(),
+    (rows) => List<LedgerTransaction>.unmodifiable(_transactions(rows)),
   );
 
   @override
   Stream<AppResult<List<AuditEntry>>> watchAudit(
     String businessId,
     String entityId,
-  ) => FirestoreStreams.list(
-    _refs
-        .audit(businessId)
-        .where('entityId', isEqualTo: entityId)
-        .orderBy('at', descending: true)
-        .limit(50),
-    AuditEntry.fromFirestore,
+  ) => LocalStreams.watch(
+    (_db.select(_db.auditLog)
+          ..where(
+            (a) =>
+                a.businessId.equals(businessId) & a.entityId.equals(entityId),
+          )
+          ..orderBy([
+            (a) => OrderingTerm.desc(a.at),
+            (a) => OrderingTerm.desc(a.id),
+          ])
+          ..limit(50))
+        .watch(),
+    (rows) => List<AuditEntry>.unmodifiable([
+      for (final row in rows) AuditEntry.fromRow(rowOf(row)),
+    ]),
   );
 
-  String? get _uid => _auth.currentUser?.uid;
-
-  static const AppException _signedOut = AppException(
-    kind: AppErrorKind.unauthenticated,
-    message: 'Your session has ended. Sign in again.',
-  );
-
-  Future<AppResult<void>> _write(
-    Future<void> Function() write, {
-    required bool awaitServer,
-  }) async {
-    if (!awaitServer) return _writer.commit(write);
-    if (!await _availability.refresh()) {
-      return Failure(_availability.unavailableError);
+  @override
+  Future<void> refresh() async {
+    try {
+      await _engine.refresh().timeout(const Duration(seconds: 15));
+    } on TimeoutException {
+      // The list updates by itself when the pull lands.
     }
-    return AppResult.guard(() => write().timeout(CallableClient.timeout));
+  }
+
+  String? get _uid => _identity.uid;
+
+  static const AppException _signedOut = CloudAvailability.signedOut;
+
+  static String _draftLabel(TransactionDraft draft) {
+    for (final candidate in [
+      draft.description,
+      draft.partyName,
+      draft.categoryName,
+    ]) {
+      if (candidate != null && candidate.trim().isNotEmpty) {
+        return 'Draft · ${candidate.trim()}';
+      }
+    }
+    return 'Draft · ${draft.type.label}';
   }
 
   @override
@@ -175,16 +253,17 @@ class TransactionService implements TransactionRepository {
     String businessId,
     TransactionDraft draft, {
     bool awaitServer = false,
-  }) {
+  }) async {
     final uid = _uid;
-    if (uid == null) return Future.value(const Failure(_signedOut));
-    final ref = _refs.transaction(businessId, draft.id);
-    final data = draft.toMap(
-      uid: uid,
-      isNew: true,
-      now: FieldValue.serverTimestamp(),
+    if (uid == null) return const Failure(_signedOut);
+    return _writer.upsert(
+      SyncTable.transactions,
+      [draft.toRow(uid: uid, businessId: businessId, isNew: true)],
+      businessId: businessId,
+      transactionId: draft.id,
+      label: _draftLabel(draft),
+      awaitServer: awaitServer,
     );
-    return _write(() => ref.set(data), awaitServer: awaitServer);
   }
 
   @override
@@ -192,24 +271,40 @@ class TransactionService implements TransactionRepository {
     String businessId,
     TransactionDraft draft, {
     bool awaitServer = false,
-  }) {
+  }) async {
     final uid = _uid;
-    if (uid == null) return Future.value(const Failure(_signedOut));
-    final ref = _refs.transaction(businessId, draft.id);
-    final data = draft.toMap(
-      uid: uid,
-      isNew: false,
-      now: FieldValue.serverTimestamp(),
+    if (uid == null) return const Failure(_signedOut);
+    return _writer.update(
+      SyncTable.transactions,
+      [
+        RowUpdate(
+          {'id': draft.id},
+          draft.toRow(uid: uid, businessId: businessId, isNew: false),
+        ),
+      ],
+      businessId: businessId,
+      transactionId: draft.id,
+      label: _draftLabel(draft),
+      awaitServer: awaitServer,
     );
-    return _write(() => ref.update(data), awaitServer: awaitServer);
   }
 
+  /// A soft delete (`deleted_at`), so other devices learn about it.
   @override
   Future<AppResult<void>> deleteDraft(
     String businessId,
     String transactionId,
-  ) => _writer.commit(
-    () => _refs.transaction(businessId, transactionId).delete(),
+  ) => _writer.update(
+    SyncTable.transactions,
+    [
+      RowUpdate(
+        {'id': transactionId},
+        {'deleted_at': DateTime.now().toUtc().toIso8601String()},
+      ),
+    ],
+    businessId: businessId,
+    transactionId: transactionId,
+    label: 'Delete draft',
   );
 
   @override

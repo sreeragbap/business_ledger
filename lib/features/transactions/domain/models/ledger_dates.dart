@@ -1,5 +1,4 @@
 import 'package:business_ledger/features/reports/domain/models/calendar_day.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 
 /// Calendar-day helpers for transaction dates (`yyyy-MM-dd`, ARCHITECTURE
@@ -27,10 +26,6 @@ abstract final class LedgerDates {
   /// The day as a UTC midnight, or `null` when [value] is not a valid day.
   static DateTime? parse(String? value) =>
       isValid(value) ? CalendarDay.parse(value!) : null;
-
-  /// `dateTs`: the day at UTC midnight, as the functions store it.
-  static Timestamp timestamp(String day) =>
-      Timestamp.fromDate(CalendarDay.parse(day));
 
   /// `14 Oct 2026`; empty for an invalid day.
   static String format(String? day) {

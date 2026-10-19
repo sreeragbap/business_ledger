@@ -4,7 +4,6 @@ import 'package:business_ledger/core/domain/app_exception.dart';
 import 'package:business_ledger/core/domain/app_result.dart';
 import 'package:business_ledger/core/sync/outbox.dart';
 import 'package:business_ledger/core/sync/outbox_entry.dart';
-import 'package:business_ledger/core/sync/pending_writes_tracker.dart';
 import 'package:business_ledger/core/sync/sync_engine.dart';
 import 'package:business_ledger/core/sync/sync_settings.dart';
 import 'package:business_ledger/core/sync/sync_status.dart';
@@ -38,7 +37,7 @@ void main() {
         'Offline · 1 change will sync',
       );
       expect(
-        text(const SyncStatus(online: false, firestoreHasPendingWrites: true)),
+        text(const SyncStatus(online: false, localChanges: 1)),
         'Offline · changes will sync',
       );
       expect(
@@ -69,7 +68,7 @@ void main() {
       );
       expect(text(const SyncStatus(syncing: true)), 'Syncing…');
       expect(
-        text(const SyncStatus(firestoreHasPendingWrites: true)),
+        text(const SyncStatus(localChanges: 1)),
         'Syncing…',
       );
       expect(
@@ -111,12 +110,10 @@ void main() {
   });
 
   group('Sync screen', () {
-    late FakeNetwork network;
     late FakeConnectivityService device;
     late FakeIdentity identity;
     late Outbox outbox;
     late FakeExecutor executor;
-    late PendingWritesTracker writes;
     late SyncSettings settings;
     late SyncEngine engine;
     late SyncCubit cubit;
@@ -131,23 +128,17 @@ void main() {
 
     Future<void> build(WidgetTester tester) async {
       SharedPreferences.setMockInitialValues({});
-      network = FakeNetwork();
       device = FakeConnectivityService(isOnline: false);
       identity = FakeIdentity();
       outbox = Outbox(MemoryOutboxStore([refused, dependent, waiting]));
       executor = FakeExecutor();
-      writes = PendingWritesTracker();
-      settings = SyncSettings(await SharedPreferences.getInstance(), network);
-      final timers = FakeTimers();
-      engine = SyncEngine(
-        outbox,
-        executor,
-        network,
-        device,
-        settings,
-        identity,
-        writes,
-        timer: timers.call,
+      settings = SyncSettings(await SharedPreferences.getInstance());
+      engine = fakeEngine(
+        outbox: outbox,
+        executor: executor,
+        device: device,
+        settings: settings,
+        identity: identity,
       );
       await engine.start();
       cubit = SyncCubit(engine, settings);
@@ -173,7 +164,6 @@ void main() {
       unawaited(outbox.dispose());
       unawaited(device.dispose());
       unawaited(identity.dispose());
-      unawaited(writes.dispose());
     }
 
     testWidgets('shows the switch, status and the outbox with reasons', (
@@ -204,13 +194,12 @@ void main() {
       dispose();
     });
 
-    testWidgets('turning sync off disables the network and says paused', (
+    testWidgets('turning sync off pauses the engine and says so', (
       tester,
     ) async {
       await build(tester);
       await tester.tap(find.byType(Switch));
       await tester.pump(const Duration(milliseconds: 300));
-      expect(network.disables, 1);
       expect(settings.enabled, isFalse);
       // Back online, but paused: nothing goes.
       device.online = true;

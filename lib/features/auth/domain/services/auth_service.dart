@@ -5,11 +5,10 @@ import 'package:business_ledger/app/app_config.dart';
 import 'package:business_ledger/core/domain/app_exception.dart';
 import 'package:business_ledger/core/domain/app_result.dart';
 import 'package:business_ledger/core/firebase/crashlytics_service.dart';
-import 'package:business_ledger/core/firebase/firestore_refs.dart';
+import 'package:business_ledger/core/sync/profile_sync.dart';
 import 'package:business_ledger/features/auth/domain/const/social_sign_in_method.dart';
 import 'package:business_ledger/features/auth/domain/models/app_user.dart';
 import 'package:business_ledger/features/auth/domain/repository/auth_repository.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:crypto/crypto.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
@@ -21,11 +20,11 @@ import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 /// Sign in with Apple.
 @LazySingleton(as: AuthRepository)
 class AuthService implements AuthRepository {
-  AuthService(this._auth, this._google, this._refs, this._crashlytics);
+  AuthService(this._auth, this._google, this._profiles, this._crashlytics);
 
   final FirebaseAuth _auth;
   final GoogleSignIn _google;
-  final FirestoreRefs _refs;
+  final ProfileSync _profiles;
   final CrashlyticsService _crashlytics;
 
   /// `GoogleSignIn.initialize` must run exactly once per process.
@@ -82,6 +81,16 @@ class AuthService implements AuthRepository {
   Future<AppResult<void>> signOut() => AppResult.guard(() async {
     await _auth.signOut();
     await _crashlytics.clearUserIdentifier();
+    try {
+      // A ledger on a shared phone: nothing of this user stays behind.
+      await _profiles.forgetDevice();
+    } catch (error, stack) {
+      await _crashlytics.recordError(
+        error,
+        stack,
+        reason: 'Could not clear the local store',
+      );
+    }
     try {
       // So the next Google sign-in shows the account picker again.
       await _google.signOut();
@@ -240,26 +249,35 @@ class AuthService implements AuthRepository {
 
   // --- Profile ---------------------------------------------------------------
 
-  /// Creates `users/{uid}` on first sign-in and refreshes the display fields
-  /// on every later one. `createdAt` is written once.
+  /// Upserts the `profiles` row (Supabase) on every sign-in, so others can
+  /// add this person to a business by email (the database takes the email
+  /// from the verified token) and the display fields stay current.
   ///
-  /// Best effort: a profile write that fails (rules, a flaky network) must
-  /// not undo a successful sign-in. The next sign-in retries it.
+  /// Best effort: a profile write that fails (a flaky network, the token
+  /// not accepted yet) must not undo a successful sign-in. It stays marked
+  /// on the device and the sync engine pushes it later.
   Future<void> _upsertProfile(User user) async {
-    final ref = _refs.user(user.uid);
     try {
-      final snapshot = await ref.get();
-      await ref.set(<String, dynamic>{
-        'displayName': user.displayName,
-        'email': user.email,
-        'photoUrl': user.photoURL,
-        if (!snapshot.exists) 'createdAt': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
+      await _profiles.saveSignIn(
+        uid: user.uid,
+        displayName: user.displayName,
+        photoUrl: user.photoURL,
+      );
+      final pushed = await _profiles.push(user.uid);
+      if (pushed case Failure(
+        :final error,
+      ) when error.kind == AppErrorKind.unknown) {
+        await _crashlytics.recordError(
+          error,
+          StackTrace.current,
+          reason: 'Could not upsert profiles row',
+        );
+      }
     } catch (error, stack) {
       await _crashlytics.recordError(
         error,
         stack,
-        reason: 'Could not write users/{uid}',
+        reason: 'Could not save the profile locally',
       );
     }
   }

@@ -2,9 +2,9 @@ import 'package:business_ledger/core/domain/app_result.dart';
 import 'package:business_ledger/features/business/domain/const/role.dart';
 import 'package:business_ledger/features/business/domain/models/member.dart';
 
-/// Membership of one business. Reads are live Firestore listeners; every
-/// change goes through a callable (members are never written by clients),
-/// so changes need a connection.
+/// Membership of one business. Reads are live queries on the on-device
+/// store; every change goes through an RPC (members are never written by
+/// clients), so changes need a connection.
 abstract class MemberRepository {
   const MemberRepository();
 

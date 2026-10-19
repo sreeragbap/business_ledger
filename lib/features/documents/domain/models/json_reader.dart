@@ -1,6 +1,4 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
-
-/// Strict field access over a Firestore map.
+/// Strict field access over a row map (`core/database/row_codec.dart`).
 ///
 /// Documents are our own schema (written by `issueDocument`), so a missing
 /// required field or a wrong type is drift to surface, not absorb: every
@@ -80,14 +78,16 @@ class JsonReader {
     ];
   }
 
-  /// A Firestore `Timestamp`. `null` while a server timestamp is pending in
-  /// the local cache.
+  /// An ISO-8601 timestamp (`timestamptz`), as a local time. `null` when
+  /// absent.
   DateTime? timestamp(String key) {
     final value = _map[key];
     return switch (value) {
       null => null,
-      final Timestamp ts => ts.toDate(),
-      final DateTime dt => dt,
+      final DateTime dt => dt.toLocal(),
+      final String text when DateTime.tryParse(text) != null => DateTime.parse(
+        text,
+      ).toLocal(),
       _ => throw FormatException('${_at(key)}: expected a timestamp'),
     };
   }

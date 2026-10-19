@@ -2,13 +2,13 @@ import 'dart:async';
 
 import 'package:business_ledger/core/domain/app_exception.dart';
 import 'package:business_ledger/core/domain/app_result.dart';
-import 'package:business_ledger/core/firebase/callable_client.dart';
+import 'package:business_ledger/core/supabase/rpc_client.dart';
 import 'package:business_ledger/core/sync/action_outcome.dart';
 import 'package:business_ledger/core/sync/cloud_availability.dart';
-import 'package:business_ledger/core/sync/firestore_network.dart';
 import 'package:business_ledger/core/sync/outbox.dart';
 import 'package:business_ledger/core/sync/outbox_entry.dart';
 import 'package:business_ledger/core/sync/sync_identity.dart';
+import 'package:business_ledger/core/sync/sync_puller.dart';
 import 'package:injectable/injectable.dart';
 
 /// A money action that may wait in the outbox.
@@ -26,7 +26,7 @@ class QueueableCall {
   final String businessId;
   final String transactionId;
 
-  /// The callable input, `requestId` included.
+  /// The RPC input (camelCase, `RpcClient` maps it), `requestId` included.
   final Map<String, Object?> payload;
   final String label;
 
@@ -42,37 +42,41 @@ class QueueableCall {
 @lazySingleton
 class SyncQueue {
   SyncQueue(
-    this._callable,
+    this._rpc,
     this._outbox,
     this._availability,
-    this._network,
-    this._identity, {
+    this._identity,
+    this._puller, {
     @ignoreParam DateTime Function()? now,
-    @ignoreParam Duration? localWritesWait,
+    @ignoreParam Duration? pullWait,
   }) : _now = now ?? DateTime.now,
-       _localWritesWait = localWritesWait ?? const Duration(seconds: 5);
+       _pullWait = pullWait ?? const Duration(seconds: 8);
 
-  final CallableClient _callable;
+  final RpcClient _rpc;
   final Outbox _outbox;
   final CloudAvailability _availability;
-  final FirestoreNetwork _network;
   final SyncIdentity _identity;
+  final SyncPuller _puller;
   final DateTime Function() _now;
-  final Duration _localWritesWait;
 
-  static const AppException signedOut = AppException(
-    kind: AppErrorKind.unauthenticated,
-    message: 'Your session has ended. Sign in again.',
-  );
+  /// After an applied action, how long the caller waits for the pull that
+  /// brings its effects (new balance, settlement, stats) into the local
+  /// store. On timeout the pull still finishes in the background.
+  final Duration _pullWait;
+
+  static const AppException signedOut = CloudAvailability.signedOut;
 
   /// Runs [call] now, or queues it.
   ///
-  /// Queued rather than sent when: the cloud is unavailable; an earlier
-  /// action for the same transaction is still queued (order matters); local
-  /// Firestore writes are not on the server within a few seconds (the
-  /// callable may read them); or the call fails in a way that may be the
+  /// Queued rather than sent when: the cloud is unavailable; anything of
+  /// this user still waits in the outbox (a draft upsert the RPC must read,
+  /// an earlier action on the same transaction: the queue is FIFO, so the
+  /// action goes behind them); or the call fails in a way that may be the
   /// network (offline, timeout). The queued entry keeps the requestId, so a
   /// timed-out call that did land is not applied twice.
+  ///
+  /// Applied: the local store is refreshed (a pull) before this returns, so
+  /// the screen shows the server's new figures.
   Future<AppResult<ActionOutcome<Map<String, dynamic>>>> run(
     QueueableCall call,
   ) async {
@@ -84,22 +88,24 @@ class SyncQueue {
     if (!await _availability.refresh()) return _enqueue(uid, call);
     await _outbox.load();
     final waiting = _outbox.entries.any(
-      (entry) => entry.uid == uid && entry.transactionId == call.transactionId,
+      (entry) =>
+          entry.uid == uid &&
+          (!entry.isFailed || entry.transactionId == call.transactionId),
     );
     if (waiting) return _enqueue(uid, call);
-    try {
-      await _network.waitForPendingWrites().timeout(_localWritesWait);
-    } catch (_) {
-      return _enqueue(uid, call);
-    }
 
-    final result = await _callable.call(
+    final result = await _rpc.call(
       call.kind.callable,
       call.payload,
       requiresOnline: false,
     );
     switch (result) {
       case Success(:final data):
+        try {
+          await _puller.pull(uid).timeout(_pullWait);
+        } on TimeoutException {
+          // Slow link: the figures arrive when the pull finishes.
+        }
         return Success(Applied(data));
       case Failure(:final error):
         if (_mayBeNetwork(error)) return _enqueue(uid, call);

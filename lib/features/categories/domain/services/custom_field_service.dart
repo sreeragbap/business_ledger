@@ -1,62 +1,80 @@
+import 'package:business_ledger/core/database/app_database.dart';
+import 'package:business_ledger/core/database/local_store.dart';
+import 'package:business_ledger/core/database/local_streams.dart';
+import 'package:business_ledger/core/database/sync_table.dart';
 import 'package:business_ledger/core/domain/app_result.dart';
-import 'package:business_ledger/core/firebase/firestore_refs.dart';
-import 'package:business_ledger/core/firebase/firestore_streams.dart';
-import 'package:business_ledger/core/firebase/local_first_writer.dart';
+import 'package:business_ledger/core/firebase/request_ids.dart';
+import 'package:business_ledger/core/sync/local_writer.dart';
+import 'package:business_ledger/core/sync/outbox_entry.dart';
 import 'package:business_ledger/features/categories/domain/models/custom_field.dart';
 import 'package:business_ledger/features/categories/domain/repository/custom_field_repository.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:drift/drift.dart';
 import 'package:injectable/injectable.dart';
 
 @LazySingleton(as: CustomFieldRepository)
 class CustomFieldService implements CustomFieldRepository {
-  CustomFieldService(this._refs, this._writer, this._db);
+  CustomFieldService(this._store, this._writer);
 
-  final FirestoreRefs _refs;
-  final LocalFirstWriter _writer;
-  final FirebaseFirestore _db;
+  final LocalStore _store;
+  final LocalWriter _writer;
+
+  AppDatabase get _db => _store.db;
 
   @override
   Stream<AppResult<List<CustomField>>> watchFields(String businessId) =>
-      FirestoreStreams.list(
-        _refs.fields(businessId).orderBy('sortOrder'),
-        CustomField.fromFirestore,
+      LocalStreams.watch(
+        (_db.select(_db.customFields)
+              ..where((f) => f.businessId.equals(businessId))
+              ..orderBy([
+                (f) => OrderingTerm.asc(f.sortOrder),
+                (f) => OrderingTerm.asc(f.label),
+              ]))
+            .watch(),
+        (rows) => List<CustomField>.unmodifiable([
+          for (final row in rows) CustomField.fromRow(rowOf(row)),
+        ]),
       );
 
   @override
   Future<AppResult<String>> create(String businessId, CustomField field) async {
-    final ref = _refs.fields(businessId).doc();
-    final result = await _writer.commit(
-      () => ref.set({
-        ...field.toMap(),
-        'createdAt': FieldValue.serverTimestamp(),
-        'updatedAt': FieldValue.serverTimestamp(),
-      }),
+    final id = RequestIds.rowId();
+    final result = await _writer.upsert(
+      SyncTable.customFields,
+      [field.copyWith(id: id).toRow(businessId)],
+      businessId: businessId,
+      label: 'New field · ${field.label.trim()}',
     );
-    return result.map((_) => ref.id);
+    return result.map((_) => id);
   }
 
   @override
   Future<AppResult<void>> update(String businessId, CustomField field) =>
-      _writer.commit(
-        () => _refs.field(businessId, field.id).update({
-          ...field.toMap(),
-          'updatedAt': FieldValue.serverTimestamp(),
-        }),
+      _writer.update(
+        SyncTable.customFields,
+        [
+          RowUpdate(
+            {'id': field.id},
+            Map.of(field.toRow(businessId))
+              ..remove('id')
+              ..remove('business_id'),
+          ),
+        ],
+        businessId: businessId,
+        label: 'Field · ${field.label.trim()}',
       );
 
   @override
   Future<AppResult<void>> reorder(String businessId, Map<String, int> orders) {
     if (orders.isEmpty) return Future.value(const Success(null));
-    return _writer.commit(() {
-      final batch = _db.batch();
-      for (final entry in orders.entries) {
-        batch.update(_refs.field(businessId, entry.key), {
-          'sortOrder': entry.value,
-          'updatedAt': FieldValue.serverTimestamp(),
-        });
-      }
-      return batch.commit();
-    });
+    return _writer.update(
+      SyncTable.customFields,
+      [
+        for (final entry in orders.entries)
+          RowUpdate({'id': entry.key}, {'sort_order': entry.value}),
+      ],
+      businessId: businessId,
+      label: 'Reorder fields',
+    );
   }
 
   @override
@@ -65,11 +83,12 @@ class CustomFieldService implements CustomFieldRepository {
     String id, {
     required bool archived,
     int? sortOrder,
-  }) => _writer.commit(
-    () => _refs.field(businessId, id).update({
-      'archived': archived,
-      'sortOrder': ?sortOrder,
-      'updatedAt': FieldValue.serverTimestamp(),
-    }),
+  }) => _writer.update(
+    SyncTable.customFields,
+    [
+      RowUpdate({'id': id}, {'archived': archived, 'sort_order': ?sortOrder}),
+    ],
+    businessId: businessId,
+    label: archived ? 'Archive field' : 'Unarchive field',
   );
 }

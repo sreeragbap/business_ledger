@@ -197,8 +197,8 @@ class _StatusCard extends StatelessWidget {
           ),
           _Line(
             label: 'Local changes',
-            value: status.firestoreHasPendingWrites
-                ? 'Some not uploaded yet'
+            value: status.hasLocalChanges
+                ? '${status.localChanges} not uploaded yet'
                 : 'Uploaded',
           ),
           _Line(label: 'Last synced', value: _when(status.lastSyncedAt)),
@@ -261,8 +261,8 @@ class _NothingWaiting extends StatelessWidget {
         SizedBox(width: AppSpacing.sm.w),
         Expanded(
           child: Text(
-            'Nothing waiting. Payments, confirms and other actions made '
-            'offline appear here until they sync.',
+            'Nothing waiting. Drafts, settings, payments, confirms and other '
+            'changes made offline appear here until they sync.',
             style: Theme.of(context).textTheme.bodyMedium,
           ),
         ),
@@ -290,6 +290,8 @@ class OutboxEntryTile extends StatelessWidget {
     OutboxKind.settle => Icons.payments_outlined,
     OutboxKind.edit => Icons.edit_outlined,
     OutboxKind.cancel => Icons.block_rounded,
+    OutboxKind.upsert => Icons.cloud_upload_outlined,
+    OutboxKind.update => Icons.cloud_sync_outlined,
   };
 
   static String statusOf(OutboxEntry entry) => switch (entry.status) {

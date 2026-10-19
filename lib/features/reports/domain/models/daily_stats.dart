@@ -1,3 +1,4 @@
+import 'package:business_ledger/core/domain/json_read.dart';
 import 'package:business_ledger/features/documents/domain/models/json_reader.dart';
 import 'package:equatable/equatable.dart';
 
@@ -30,8 +31,8 @@ class InOut extends Equatable {
   String toString() => 'InOut(in: $inMinor, out: $outMinor)';
 }
 
-/// `businesses/{bid}/stats/{yyyy-MM-dd}`, maintained by the functions in
-/// the same transaction as each financial write (`functions/src/lib/stats.ts`).
+/// A `daily_stats` row, maintained by the RPCs in the same database
+/// transaction as each financial write (`app.apply_stats`).
 ///
 /// Every figure may be missing, meaning zero: the server only writes the
 /// paths a delta touched.
@@ -47,7 +48,11 @@ class DailyStats extends Equatable {
     this.byType = const {},
   });
 
-  /// Parses a stats document. The day comes from `date`, else the doc id.
+  /// A Postgres row (snake_case; the `by_*` maps keep their keys).
+  factory DailyStats.fromRow(Map<String, dynamic> row) =>
+      DailyStats.fromMap('${row['date']}', RowKeys.camelMap(row));
+
+  /// Parses a stats map. The day comes from `date`, else [id].
   factory DailyStats.fromMap(String id, Map<String, dynamic> map) {
     final json = JsonReader(map, 'stats/$id');
     return DailyStats(

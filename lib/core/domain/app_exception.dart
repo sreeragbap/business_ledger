@@ -1,15 +1,18 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
 
 import 'package:business_ledger/core/ledger/ledger_math.dart';
-import 'package:cloud_functions/cloud_functions.dart';
 import 'package:equatable/equatable.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:http/http.dart' as http;
+import 'package:supabase_flutter/supabase_flutter.dart' show PostgrestException;
 
 /// Why an operation failed, in terms the UI can branch on without reading
-/// Firebase error codes.
+/// backend error codes.
 enum AppErrorKind {
-  /// No connection, or the backend could not be reached. Firestore reads keep
-  /// working from cache; financial callables are refused.
+  /// No connection, or the backend could not be reached. Reads keep working
+  /// from the on-device store; money actions are queued.
   offline,
 
   /// The request reached the server but the outcome is unknown. Retrying with
@@ -48,8 +51,8 @@ enum AppErrorKind {
   unknown,
 }
 
-/// The machine-readable cause a callable puts in `details.reason`
-/// (`functions/src/lib/errors.ts`).
+/// The machine-readable cause an RPC puts in `details.reason`
+/// (`supabase/README.md`, Error contract).
 enum AppErrorReason {
   violation('violation'),
   conflict('conflict'),
@@ -58,7 +61,11 @@ enum AppErrorReason {
   role('role'),
   notFound('notFound'),
   inUse('inUse'),
-  requestReused('requestReused');
+  requestReused('requestReused'),
+
+  /// A guard trigger refused a change to a column that never changes.
+  immutable('immutable'),
+  unauthenticated('unauthenticated');
 
   const AppErrorReason(this.key);
   final String key;
@@ -74,9 +81,9 @@ enum AppErrorReason {
 /// Every failure a repository returns, whatever produced it.
 ///
 /// [message] is always safe to show the user. Server messages are used for
-/// callable errors that carry a `reason` (the functions write them for the
-/// user); everything else gets wording from here, because raw Firebase
-/// messages are written for developers.
+/// RPC errors that carry a `reason` (the database writes them for the
+/// user); everything else gets wording from here, because raw Postgres and
+/// Firebase messages are written for developers.
 class AppException extends Equatable implements Exception {
   const AppException({
     required this.kind,
@@ -88,22 +95,56 @@ class AppException extends Equatable implements Exception {
     this.cause,
   });
 
-  /// Dispatches on the runtime type. Subtypes first: both
-  /// [FirebaseFunctionsException] and [FirebaseAuthException] are
-  /// [FirebaseException]s.
+  /// Dispatches on the runtime type. Subtypes first: a
+  /// [FirebaseAuthException] is a [FirebaseException].
   factory AppException.from(Object error) => switch (error) {
     final AppException e => e,
-    final FirebaseFunctionsException e => AppException.fromFunctions(e),
+    final PostgrestException e => AppException.fromPostgrest(e),
     final FirebaseAuthException e => AppException.fromAuth(e),
     final FirebaseException e => AppException.fromFirebase(e),
     TimeoutException() => const AppException(
       kind: AppErrorKind.timeout,
       message: _timeoutMessage,
     ),
+    // The request never got an answer: no network, DNS, TLS, a dropped
+    // connection. Safe to retry (money actions carry a request id).
+    SocketException() ||
+    HttpException() ||
+    http.ClientException() => AppException(
+      kind: AppErrorKind.offline,
+      message: _offlineMessage,
+      code: 'unavailable',
+      cause: '$error',
+    ),
     _ => AppException.unknown(error),
   };
 
-  /// A Firestore error.
+  /// A PostgREST error: an RPC's deliberate refusal (SQLSTATE `PTnnn` with
+  /// `details` = `{code, reason, violation?, field?}`, `supabase/README.md`
+  /// Error contract), or a database / gateway error outside the contract.
+  factory AppException.fromPostgrest(PostgrestException error) {
+    final details = _asMap(_decodeDetails(error.details));
+    final contractCode = details['code'];
+    if (contractCode is String && contractCode.isNotEmpty) {
+      return AppException._fromContract(
+        code: normaliseCode(contractCode),
+        details: details,
+        serverMessage: error.message,
+        cause: '${error.code}: ${error.message}',
+      );
+    }
+    final sqlState = (error.code ?? '').trim().toUpperCase();
+    final code = _codeForSqlState(sqlState);
+    final kind = _kindForCode(code);
+    return AppException(
+      kind: kind,
+      message: _messageFor(kind),
+      code: code,
+      cause: '$sqlState: ${error.message}',
+    );
+  }
+
+  /// A Firebase error other than Auth (e.g. from `firebase_core`).
   factory AppException.fromFirebase(FirebaseException error) {
     final code = normaliseCode(error.code);
     final kind = _kindForCode(code);
@@ -115,12 +156,15 @@ class AppException extends Equatable implements Exception {
     );
   }
 
-  /// A callable error. `details` is `{reason, violation?, field?}` when the
-  /// function raised it deliberately; absent for crashes and transport
-  /// failures.
-  factory AppException.fromFunctions(FirebaseFunctionsException error) {
-    final code = normaliseCode(error.code);
-    final details = _asMap(error.details);
+  /// An error that follows the RPC error contract: [code] is
+  /// `details.code` (`failed-precondition`, `aborted`…), the rest comes from
+  /// `details`.
+  factory AppException._fromContract({
+    required String code,
+    required Map<String, Object?> details,
+    required String serverMessage,
+    String? cause,
+  }) {
     final reason = AppErrorReason.fromKey(details['reason']);
     final violation = _violationFrom(details['violation']);
     final field = details['field'];
@@ -128,22 +172,27 @@ class AppException extends Equatable implements Exception {
     final kind = switch (reason) {
       AppErrorReason.violation => AppErrorKind.violation,
       AppErrorReason.conflict => AppErrorKind.conflict,
-      AppErrorReason.validation => AppErrorKind.validation,
+      AppErrorReason.validation =>
+        code == 'already-exists'
+            ? AppErrorKind.alreadyExists
+            : AppErrorKind.validation,
       AppErrorReason.notMember ||
-      AppErrorReason.role => AppErrorKind.permissionDenied,
+      AppErrorReason.role ||
+      AppErrorReason.immutable => AppErrorKind.permissionDenied,
       AppErrorReason.notFound => AppErrorKind.notFound,
       AppErrorReason.inUse => AppErrorKind.inUse,
       AppErrorReason.requestReused => AppErrorKind.requestReused,
+      AppErrorReason.unauthenticated => AppErrorKind.unauthenticated,
       null => _kindForCode(code),
     };
 
-    // A deliberate server error's message is written for the user. Without a
-    // reason it may be an internal crash text, so it is not trusted.
-    final serverMessage = error.message?.trim() ?? '';
+    // A deliberate refusal's message is written for the user. Without a
+    // reason it may be internal text, so it is not trusted.
+    final trimmed = serverMessage.trim();
     final message = violation != null
         ? violation.message
-        : reason != null && serverMessage.isNotEmpty
-        ? serverMessage
+        : reason != null && trimmed.isNotEmpty
+        ? trimmed
         : _messageFor(kind);
 
     return AppException(
@@ -153,7 +202,7 @@ class AppException extends Equatable implements Exception {
       reason: reason,
       violation: violation,
       field: field is String && field.isNotEmpty ? field : null,
-      cause: error.message,
+      cause: cause,
     );
   }
 
@@ -242,7 +291,8 @@ class AppException extends Equatable implements Exception {
   /// User-safe text.
   final String message;
 
-  /// The Firebase code, normalised (`aborted`, `permission-denied`…).
+  /// The error code, normalised (`aborted`, `permission-denied`…): the
+  /// RPC contract's `details.code`, or one derived from the SQLSTATE.
   final String? code;
 
   final AppErrorReason? reason;
@@ -261,8 +311,8 @@ class AppException extends Equatable implements Exception {
   bool get isConflict => kind == AppErrorKind.conflict;
   bool get isCancelled => kind == AppErrorKind.cancelled;
 
-  /// `ABORTED`, `functions/aborted` and `aborted` all become `aborted`;
-  /// `FAILED_PRECONDITION` becomes `failed-precondition`. Platforms disagree
+  /// `ABORTED`, `auth/aborted` and `aborted` all become `aborted`;
+  /// `FAILED_PRECONDITION` becomes `failed-precondition`. Sources disagree
   /// on spelling, the meaning does not.
   static String normaliseCode(String code) {
     final bare = code.contains('/') ? code.split('/').last : code;
@@ -271,12 +321,12 @@ class AppException extends Equatable implements Exception {
 
   static AppErrorKind _kindForCode(String code) => switch (code) {
     'unavailable' || 'network-request-failed' => AppErrorKind.offline,
+    'failed-precondition' => AppErrorKind.violation,
     'deadline-exceeded' => AppErrorKind.timeout,
     'unauthenticated' => AppErrorKind.unauthenticated,
     'permission-denied' => AppErrorKind.permissionDenied,
     'not-found' => AppErrorKind.notFound,
-    // Firestore raises `aborted` for contended transactions too; either way
-    // the remedy is the same: reload and retry.
+    // A stale `p_expected_version`: reload and retry.
     'aborted' => AppErrorKind.conflict,
     'invalid-argument' => AppErrorKind.validation,
     'already-exists' => AppErrorKind.alreadyExists,
@@ -313,6 +363,65 @@ class AppException extends Equatable implements Exception {
     AppErrorKind.cancelled => _cancelledMessage,
     AppErrorKind.unknown => 'Something went wrong. Please try again.',
   };
+
+  /// SQLSTATEs and PostgREST codes outside the contract, as the normalised
+  /// codes the rest of the app (and `SyncErrorPolicy`) understands.
+  static String _codeForSqlState(String state) {
+    switch (state) {
+      // A PTnnn without the JSON detail (should not happen): its status.
+      case 'PT400':
+        return 'invalid-argument';
+      case 'PT401':
+        return 'unauthenticated';
+      case 'PT403':
+        return 'permission-denied';
+      case 'PT404':
+        return 'not-found';
+      case 'PT409':
+        return 'aborted';
+      case 'PT412':
+        return 'failed-precondition';
+      case 'PT422':
+        return 'already-exists';
+      // Row level security / privileges on a direct table write.
+      case '42501':
+        return 'permission-denied';
+      // JWT missing, expired or not accepted (PostgREST).
+      case 'PGRST300' || 'PGRST301' || 'PGRST302' || 'PGRST303':
+        return 'unauthenticated';
+      // `.single()` found nothing.
+      case 'PGRST116':
+        return 'not-found';
+    }
+    // CHECK / NOT NULL / unique / bad input (23xxx, 22xxx): resending the
+    // same row cannot succeed.
+    if (state.startsWith('23') || state.startsWith('22')) {
+      return 'invalid-argument';
+    }
+    // HTTP status codes (a gateway answering with a non-JSON body).
+    final status = int.tryParse(state);
+    if (status != null) {
+      if (status == 401) return 'unauthenticated';
+      if (status == 403) return 'permission-denied';
+      if (status == 404) return 'not-found';
+      if (status >= 500 || status == 408 || status == 429) return 'unavailable';
+    }
+    // Deadlock, serialization failure, statement timeout, connection or
+    // resource trouble, anything unknown: the server's state did not
+    // change; try again later.
+    return 'internal';
+  }
+
+  static Object? _decodeDetails(Object? details) {
+    if (details is! String) return details;
+    final text = details.trim();
+    if (!text.startsWith('{')) return null;
+    try {
+      return jsonDecode(text);
+    } on FormatException {
+      return null;
+    }
+  }
 
   static Map<String, Object?> _asMap(Object? details) {
     if (details is Map) {

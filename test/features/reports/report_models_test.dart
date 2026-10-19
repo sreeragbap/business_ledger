@@ -3,30 +3,28 @@ import 'package:business_ledger/features/reports/domain/models/calendar_day.dart
 import 'package:business_ledger/features/reports/domain/models/daily_stats.dart';
 import 'package:business_ledger/features/reports/domain/models/report_range.dart';
 import 'package:business_ledger/features/reports/domain/models/transaction_row.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   group('DailyStats.fromMap', () {
     test('parses a full stats doc', () {
-      final stats = DailyStats.fromMap('2026-10-14', {
+      final stats = DailyStats.fromMap('2026-10-14', const {
         'date': '2026-10-14',
-        'dateTs': Timestamp.fromDate(DateTime.utc(2026, 10, 14)),
         'incomeMinor': 1200,
         'expenseMinor': 300,
         'cashInMinor': 1000,
         'cashOutMinor': 300,
-        'byCategory': const {
+        'byCategory': {
           'c1': {'in': 1200},
           'c2': {'out': 300},
         },
-        'byProject': const {
+        'byProject': {
           'p1': {'in': 200, 'out': 100},
         },
-        'byType': const {
+        'byType': {
           'sale': {'in': 1200},
         },
-        'updatedAt': Timestamp.now(),
+        'updatedAt': '2026-10-14T10:00:00+00:00',
       });
       expect(stats.date, '2026-10-14');
       expect(stats.incomeMinor, 1200);

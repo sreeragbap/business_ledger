@@ -1,53 +1,71 @@
+import 'package:business_ledger/core/database/app_database.dart';
+import 'package:business_ledger/core/database/local_store.dart';
+import 'package:business_ledger/core/database/local_streams.dart';
+import 'package:business_ledger/core/database/sync_table.dart';
 import 'package:business_ledger/core/domain/app_result.dart';
-import 'package:business_ledger/core/firebase/firestore_refs.dart';
-import 'package:business_ledger/core/firebase/firestore_streams.dart';
-import 'package:business_ledger/core/firebase/local_first_writer.dart';
+import 'package:business_ledger/core/firebase/request_ids.dart';
+import 'package:business_ledger/core/sync/local_writer.dart';
+import 'package:business_ledger/core/sync/outbox_entry.dart';
 import 'package:business_ledger/features/projects/domain/models/project.dart';
 import 'package:business_ledger/features/projects/domain/repository/project_repository.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:drift/drift.dart';
 import 'package:injectable/injectable.dart';
 
 @LazySingleton(as: ProjectRepository)
 class ProjectService implements ProjectRepository {
-  ProjectService(this._refs, this._writer);
+  ProjectService(this._store, this._writer);
 
-  final FirestoreRefs _refs;
-  final LocalFirstWriter _writer;
+  final LocalStore _store;
+  final LocalWriter _writer;
+
+  AppDatabase get _db => _store.db;
 
   @override
   Stream<AppResult<List<Project>>> watchProjects(String businessId) =>
-      FirestoreStreams.list(
-        _refs.projects(businessId).orderBy('name'),
-        Project.fromFirestore,
+      LocalStreams.watch(
+        (_db.select(_db.projects)
+              ..where((row) => row.businessId.equals(businessId))
+              ..orderBy([(row) => OrderingTerm.asc(row.name)]))
+            .watch(),
+        (rows) => List<Project>.unmodifiable([
+          for (final row in rows) Project.fromRow(rowOf(row)),
+        ]),
       );
 
   @override
   Future<AppResult<Project?>> getProject(String businessId, String id) =>
       AppResult.guard(() async {
-        final doc = await _refs.project(businessId, id).get();
-        return doc.exists ? Project.fromFirestore(doc) : null;
+        final row = await _store.readRow(SyncTable.projects, {'id': id});
+        if (row == null || row['business_id'] != businessId) return null;
+        return Project.fromRow(row);
       });
 
   @override
   Future<AppResult<String>> create(String businessId, Project project) async {
-    final ref = _refs.projects(businessId).doc();
-    final result = await _writer.commit(
-      () => ref.set({
-        ...project.toMap(),
-        'createdAt': FieldValue.serverTimestamp(),
-        'updatedAt': FieldValue.serverTimestamp(),
-      }),
+    final id = RequestIds.rowId();
+    final result = await _writer.upsert(
+      SyncTable.projects,
+      [project.copyWith(id: id).toRow(businessId)],
+      businessId: businessId,
+      label: 'New project · ${project.name.trim()}',
     );
-    return result.map((_) => ref.id);
+    return result.map((_) => id);
   }
 
   @override
   Future<AppResult<void>> update(String businessId, Project project) =>
-      _writer.commit(
-        () => _refs.project(businessId, project.id).update({
-          ...project.toMap(),
-          'updatedAt': FieldValue.serverTimestamp(),
-        }),
+      _writer.update(
+        SyncTable.projects,
+        [
+          RowUpdate(
+            {'id': project.id},
+            Map.of(project.toRow(businessId))
+              ..remove('id')
+              ..remove('business_id'),
+          ),
+        ],
+        businessId: businessId,
+        label: 'Project · ${project.name.trim()}',
       );
 
   @override
@@ -55,10 +73,12 @@ class ProjectService implements ProjectRepository {
     String businessId,
     String id, {
     required bool archived,
-  }) => _writer.commit(
-    () => _refs.project(businessId, id).update({
-      'archived': archived,
-      'updatedAt': FieldValue.serverTimestamp(),
-    }),
+  }) => _writer.update(
+    SyncTable.projects,
+    [
+      RowUpdate({'id': id}, {'archived': archived}),
+    ],
+    businessId: businessId,
+    label: archived ? 'Archive project' : 'Unarchive project',
   );
 }

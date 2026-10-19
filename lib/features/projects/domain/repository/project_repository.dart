@@ -1,7 +1,7 @@
 import 'package:business_ledger/core/domain/app_result.dart';
 import 'package:business_ledger/features/projects/domain/models/project.dart';
 
-/// A business's projects. Direct, offline-friendly Firestore writes;
+/// A business's projects. Local-first writes (`LocalWriter`), offline-friendly;
 /// archived rather than deleted.
 ///
 /// For the transaction form (only when `StandardField.project` is enabled):

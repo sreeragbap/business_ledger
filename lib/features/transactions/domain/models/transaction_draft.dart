@@ -6,19 +6,20 @@ import 'package:business_ledger/features/transactions/domain/models/line_item.da
 import 'package:collection/collection.dart';
 import 'package:equatable/equatable.dart';
 
-/// The transaction form's working copy, and the one place a draft document
-/// is shaped for Firestore.
+/// The transaction form's working copy, and the one place a draft row is
+/// shaped for the server.
 ///
-/// [toMap] produces exactly what `validDraft` in `firestore.rules` accepts
-/// (FUNCTIONS_API "Draft shape"): `status: 'draft'`, a creatable `type`,
-/// `createdBy`, no money the functions maintain (`paidMinor`…), no
-/// `confirmed*` / `cancelled*` / link fields, `totalMinor` an int within
-/// `0..1e13`, `description` ≤ 200 and ≤ 200 lines.
+/// [toRow] produces exactly what `app.valid_draft` and the row level
+/// security of `transactions` accept (`supabase/README.md`): `status:
+/// 'draft'`, a creatable `type`, `created_by` = the caller, no money the
+/// server maintains (`paid_minor`…), no `confirmed_*` / `cancelled_*` /
+/// link columns, `total_minor` an int within `0..1e13`, `description` ≤ 200
+/// and ≤ 200 lines.
 ///
-/// Name snapshots (`categoryName`, `partyName`, `projectName`) are written
-/// too: the rules allow them, the list can show a draft's category without a
-/// lookup, and they feed the draft's `searchTokens`. The server rewrites all
-/// three on confirm.
+/// Name snapshots (`category_name`, `party_name`, `project_name`) are
+/// written too: allowed, the list can show a draft's category without a
+/// lookup, and they feed the draft's `search_tokens`. The server rewrites
+/// all three on confirm.
 class TransactionDraft extends Equatable {
   const TransactionDraft({
     required this.id,
@@ -143,11 +144,11 @@ class TransactionDraft extends Equatable {
       (value is String && value.trim().isEmpty) ||
       (value is List && value.isEmpty);
 
-  /// The Firestore document for a draft.
+  /// The draft as a camelCase map (the shape the models and RPCs use).
   ///
-  /// [now] is the server-timestamp sentinel (`FieldValue.serverTimestamp()`
-  /// from the service, any marker in tests). Only a new draft gets
-  /// `createdBy`, `createdAt` and `version`; an update keeps the stored ones.
+  /// [now] is any timestamp marker. Only a new draft gets `createdBy`,
+  /// `createdAt` and `version`; an update keeps the stored ones. The
+  /// server row is [toRow].
   Map<String, Object?> toMap({
     required String uid,
     required bool isNew,
@@ -167,7 +168,6 @@ class TransactionDraft extends Equatable {
     'notes': notes.trim(),
     'paymentMethod': paymentMethod.trim(),
     'date': date,
-    if (LedgerDates.isValid(date)) 'dateTs': LedgerDates.timestamp(date),
     'dueDate': dueDate,
     'lineItems': useLineItems
         ? [for (final line in lineItems) line.toMap()]
@@ -177,6 +177,47 @@ class TransactionDraft extends Equatable {
     'searchTokens': searchTokens,
     'updatedAt': now,
     if (isNew) ...{'createdBy': uid, 'createdAt': now, 'version': 0},
+  };
+
+  /// The `transactions` row a client writes (snake_case).
+  ///
+  /// A new draft ([isNew]) is a whole row, inserted (or re-sent) by upsert:
+  /// with its `id`, `business_id`, `created_by` = [uid], `status` and
+  /// `version` 0. An update is the editable columns only: `id`,
+  /// `business_id` and `created_by` can never change (another editor may be
+  /// saving someone else's draft).
+  Map<String, Object?> toRow({
+    required String uid,
+    required String businessId,
+    required bool isNew,
+  }) => {
+    if (isNew) ...{
+      'id': id,
+      'business_id': businessId,
+      'created_by': uid,
+      'version': 0,
+    },
+    'status': TransactionStatus.draft.key,
+    'type': type.key,
+    'direction': resolvedDirection?.key,
+    'category_id': categoryId,
+    'category_name': categoryName,
+    'party_id': partyId,
+    'party_name': partyName,
+    'project_id': projectId,
+    'project_name': projectName,
+    'description': description.trim(),
+    'reference': reference.trim(),
+    'notes': notes.trim(),
+    'payment_method': paymentMethod.trim(),
+    'date': LedgerDates.isValid(date) ? date : null,
+    'due_date': LedgerDates.isValid(dueDate) ? dueDate : null,
+    'line_items': useLineItems
+        ? [for (final line in lineItems) line.toMap()]
+        : const <Map<String, Object>>[],
+    'total_minor': total,
+    'custom_fields': cleanedCustomFields,
+    'search_tokens': searchTokens,
   };
 
   /// The `changes` for `editConfirmedTransaction`: only keys whose value

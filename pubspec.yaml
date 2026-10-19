@@ -1,5 +1,5 @@
 name: business_ledger
-description: "Multi-business digital ledger on Firebase."
+description: "Multi-business digital ledger on Supabase, with Firebase sign-in."
 publish_to: 'none'
 version: 0.1.0+1
 
@@ -10,12 +10,14 @@ dependencies:
   auto_route: ^11.2.0
   bloc: ^9.2.1
   bloc_concurrency: ^0.3.0
-  cloud_firestore: ^6.10.0
-  cloud_functions: ^6.5.0
   collection: ^1.19.1
   connectivity_plus: ^7.3.2
   # SHA-256 of the Sign in with Apple nonce.
   crypto: ^3.0.7
+  # On-device store (SQLite): every screen reads from it, so the app works
+  # offline; the sync engine keeps it in step with Supabase.
+  drift: ^2.34.4
+  drift_flutter: ^0.3.1
   equatable: ^3.0.0
   firebase_auth: ^6.7.0
   firebase_core: ^4.15.0
@@ -26,12 +28,14 @@ dependencies:
   flutter_screenutil: ^5.9.3
   get_it: ^9.3.0
   google_sign_in: ^7.2.0
+  # Only to recognise its ClientException (no network) in AppException.
+  http: ^1.6.0
   injectable: ^3.0.0
   intl: ^0.20.3
   json_annotation: ^4.12.0
   local_auth: ^3.0.2
-  # The outbox (offline queue) and staged attachments live in the app
-  # support directory.
+  # The outbox (offline queue) and the SQLite file live in the app support
+  # directory.
   path_provider: ^2.1.6
   pdf: ^3.13.1
   printing: ^5.15.1
@@ -39,12 +43,16 @@ dependencies:
   share_plus: ^13.3.1
   shared_preferences: ^2.5.6
   sign_in_with_apple: ^8.2.0
+  # Data backend: Postgres via PostgREST (tables + RPCs). Auth stays with
+  # Firebase: the Firebase ID token is the bearer token (third-party auth).
+  supabase_flutter: ^2.18.3
   uuid: ^4.6.0
 
 dev_dependencies:
   auto_route_generator: ^10.6.0
   bloc_test: ^10.0.0
   build_runner: ^2.15.1
+  drift_dev: ^2.34.0
   flutter_test:
     sdk: flutter
   injectable_generator: ^3.1.3

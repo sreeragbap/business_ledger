@@ -25,7 +25,7 @@ part 'business_scope_state.dart';
 /// drops the selection with [BusinessScopeState.lostMessage] set.
 ///
 /// The choice is remembered per user on the device and in
-/// `users/{uid}.lastBusinessId`, so a restart (or another device) reopens it.
+/// `profiles.last_business_id`, so a restart (or another device) reopens it.
 @lazySingleton
 class BusinessScopeCubit extends Cubit<BusinessScopeState> {
   BusinessScopeCubit(this._businesses, this._members, this._auth)

@@ -1,106 +1,73 @@
 import 'dart:async';
 
-import 'package:business_ledger/core/domain/app_exception.dart';
+import 'package:business_ledger/core/database/app_database.dart';
+import 'package:business_ledger/core/database/local_store.dart';
+import 'package:business_ledger/core/database/local_streams.dart';
+import 'package:business_ledger/core/database/sync_table.dart';
 import 'package:business_ledger/core/domain/app_result.dart';
-import 'package:business_ledger/core/firebase/firestore_refs.dart';
 import 'package:business_ledger/core/ledger/ledger_enums.dart';
+import 'package:business_ledger/core/sync/sync_engine.dart';
 import 'package:business_ledger/features/reports/domain/models/calendar_day.dart';
 import 'package:business_ledger/features/reports/domain/models/daily_stats.dart';
 import 'package:business_ledger/features/reports/domain/models/transaction_row.dart';
 import 'package:business_ledger/features/reports/domain/repository/reports_repository.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:drift/drift.dart';
 import 'package:injectable/injectable.dart';
 
-/// [ReportsRepository] over Firestore. Every query here is backed by an
-/// index in `firestore.indexes.json` (or is single-field).
+/// [ReportsRepository] over the on-device store: `daily_stats` rows and
+/// the transactions pulled from Supabase. Works offline; figures are as of
+/// the last pull.
 @LazySingleton(as: ReportsRepository)
 class ReportsService implements ReportsRepository {
-  ReportsService(this._refs);
+  ReportsService(this._store, this._engine);
 
-  final FirestoreRefs _refs;
+  final LocalStore _store;
+  final SyncEngine _engine;
 
-  /// `dateTs` is the day at UTC midnight (`functions/src/lib/dates.ts`).
-  static Timestamp _dayTs(String day) =>
-      Timestamp.fromDate(CalendarDay.parse(day));
+  AppDatabase get _db => _store.db;
 
   @override
   Stream<AppResult<List<DailyStats>>> watchStats(
     String businessId, {
     required String from,
     required String to,
-  }) => _refs
-      .stats(businessId)
-      .where('dateTs', isGreaterThanOrEqualTo: _dayTs(from))
-      .where('dateTs', isLessThanOrEqualTo: _dayTs(to))
-      .orderBy('dateTs')
-      .snapshots()
-      .transform(
-        _results(
-          (snapshot) => [
-            for (final doc in snapshot.docs)
-              DailyStats.fromMap(doc.id, doc.data()),
-          ],
-        ),
-      );
+  }) => LocalStreams.watch(
+    (_db.select(_db.dailyStatsTable)
+          ..where(
+            (s) =>
+                s.businessId.equals(businessId) &
+                s.date.isBiggerOrEqualValue(from) &
+                s.date.isSmallerOrEqualValue(to),
+          )
+          ..orderBy([(s) => OrderingTerm.asc(s.date)]))
+        .watch(),
+    (rows) => [for (final row in rows) DailyStats.fromRow(rowOf(row))],
+  );
 
-  Query<JsonMap> _open(String businessId, Direction? direction) {
-    var query = _refs.transactions(businessId).where('isOpen', isEqualTo: true);
-    if (direction != null) {
-      query = query.where('direction', isEqualTo: direction.key);
-    }
-    return query;
-  }
-
+  /// `sum(outstanding_minor)` per direction over open (confirmed, owed)
+  /// transactions, summed by SQLite in integers: never a double.
   @override
   Future<AppResult<ReceivablesPayables>> receivablesAndPayables(
     String businessId,
-  ) async {
-    try {
-      final [receivable, payable] = await Future.wait([
-        for (final direction in Direction.values)
-          _open(businessId, direction)
-              .aggregate(sum('outstandingMinor'))
-              .get()
-              .then((snapshot) => snapshot.getSum('outstandingMinor')),
-      ]);
-      return Success(
-        ReceivablesPayables(
-          // Sums of integers, exact below 2^53.
-          receivableMinor: (receivable ?? 0).round(),
-          payableMinor: (payable ?? 0).round(),
-        ),
-      );
-    } catch (error) {
-      final failure = AppException.from(error);
-      // Aggregates are server-only; offline, sum what the cache holds.
-      if (!failure.isOffline && failure.kind != AppErrorKind.timeout) {
-        return Failure(failure);
-      }
-      return AppResult.guard(() => _fromCache(businessId));
-    }
-  }
-
-  Future<ReceivablesPayables> _fromCache(String businessId) async {
-    final snapshot = await _open(
-      businessId,
-      null,
-    ).get(const GetOptions(source: Source.cache));
-    var receivable = 0;
-    var payable = 0;
-    for (final doc in snapshot.docs) {
-      final row = TransactionRow.fromMap(doc.id, doc.data());
-      if (row.direction == Direction.outflow) {
-        payable += row.outstandingMinor;
-      } else {
-        receivable += row.outstandingMinor;
-      }
-    }
+  ) => AppResult.guard(() async {
+    final row = await _db
+        .customSelect(
+          'SELECT '
+          "COALESCE(SUM(CASE WHEN direction = 'in' "
+          'THEN outstanding_minor END), 0) AS receivable, '
+          "COALESCE(SUM(CASE WHEN direction = 'out' "
+          'THEN outstanding_minor END), 0) AS payable '
+          'FROM transactions '
+          'WHERE business_id = ? AND is_open = 1 AND deleted_at IS NULL',
+          variables: [Variable.withString(businessId)],
+          readsFrom: {_db.transactions},
+        )
+        .getSingle();
     return ReceivablesPayables(
-      receivableMinor: receivable,
-      payableMinor: payable,
-      fromCache: true,
+      receivableMinor: row.read<int>('receivable'),
+      payableMinor: row.read<int>('payable'),
     );
-  }
+  });
 
   @override
   Stream<AppResult<List<TransactionRow>>> openTransactions(
@@ -110,63 +77,65 @@ class ReportsService implements ReportsRepository {
     String? today,
     int limit = 20,
   }) {
-    var query = _open(businessId, direction);
-    if (overdueOnly) {
-      query = query.where(
-        'dueDate',
-        isLessThan: today ?? CalendarDay.key(CalendarDay.today()),
-      );
-    }
-    return query
-        .orderBy('dueDate')
-        .limit(limit)
-        .snapshots()
-        .transform(_results(_rows));
+    final day = today ?? CalendarDay.key(CalendarDay.today());
+    final query = _db.select(_db.transactions)
+      ..where((t) {
+        var where =
+            t.businessId.equals(businessId) &
+            t.isOpen.equals(true) &
+            t.deletedAt.isNull();
+        if (direction != null) where &= t.direction.equals(direction.key);
+        if (overdueOnly) where &= t.dueDate.isSmallerThanValue(day);
+        return where;
+      })
+      ..orderBy([(t) => OrderingTerm.asc(t.dueDate)])
+      ..limit(limit);
+    return LocalStreams.watch(query.watch(), _rows);
   }
 
   @override
   Stream<AppResult<List<TransactionRow>>> recentTransactions(
     String businessId, {
     int limit = 10,
-  }) => _refs
-      .transactions(businessId)
-      .orderBy('dateTs', descending: true)
-      .limit(limit)
-      .snapshots()
-      .transform(_results(_rows));
+  }) => LocalStreams.watch(
+    (_db.select(_db.transactions)
+          ..where((t) => t.businessId.equals(businessId) & t.deletedAt.isNull())
+          ..orderBy([
+            (t) => OrderingTerm.desc(t.date),
+            (t) => OrderingTerm.desc(t.createdAt),
+          ])
+          ..limit(limit))
+        .watch(),
+    _rows,
+  );
 
   @override
   Future<AppResult<ReportLabels>> labels(String businessId) =>
       AppResult.guard(() async {
-        final [categories, projects] = await Future.wait([
-          _refs.categories(businessId).get(),
-          _refs.projects(businessId).get(),
-        ]);
-        Map<String, String> names(QuerySnapshot<JsonMap> snapshot) => {
-          for (final doc in snapshot.docs)
-            if (doc.data()['name'] case final String name) doc.id: name,
-        };
+        final categories =
+            await (_db.select(_db.categories)..where(
+                  (c) => c.businessId.equals(businessId) & c.deletedAt.isNull(),
+                ))
+                .get();
+        final projects = await (_db.select(
+          _db.projects,
+        )..where((p) => p.businessId.equals(businessId))).get();
         return ReportLabels(
-          categories: names(categories),
-          projects: names(projects),
+          categories: {for (final c in categories) c.id: c.name},
+          projects: {for (final p in projects) p.id: p.name},
         );
       });
 
-  static List<TransactionRow> _rows(QuerySnapshot<JsonMap> snapshot) => [
-    for (final doc in snapshot.docs) TransactionRow.fromMap(doc.id, doc.data()),
-  ];
+  @override
+  Future<void> refresh() async {
+    try {
+      await _engine.refresh().timeout(const Duration(seconds: 15));
+    } on TimeoutException {
+      // The live figures update by themselves when the pull lands.
+    }
+  }
 
-  static StreamTransformer<S, AppResult<T>> _results<S, T>(
-    T Function(S source) convert,
-  ) => StreamTransformer.fromHandlers(
-    handleData: (source, sink) {
-      try {
-        sink.add(Success(convert(source)));
-      } catch (error) {
-        sink.add(Failure(AppException.from(error)));
-      }
-    },
-    handleError: (error, _, sink) =>
-        sink.add(Failure(AppException.from(error))),
-  );
+  static List<TransactionRow> _rows(List<TransactionRowData> rows) => [
+    for (final row in rows) TransactionRow.fromRow(rowOf(row)),
+  ];
 }

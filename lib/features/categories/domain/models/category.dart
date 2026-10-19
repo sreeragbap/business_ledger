@@ -1,14 +1,12 @@
-import 'package:business_ledger/core/firebase/firestore_read.dart';
-import 'package:business_ledger/core/firebase/firestore_refs.dart';
+import 'package:business_ledger/core/domain/json_read.dart';
 import 'package:business_ledger/features/categories/domain/const/category_kind.dart';
 import 'package:business_ledger/features/categories/domain/const/category_style.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:equatable/equatable.dart';
 
-/// `businesses/{bid}/categories/{id}`. Written by clients (editor+) under
-/// `validCategory` in `firestore.rules`: `name` 1–60 chars, `kind` one of
-/// income/expense/any, `archived` a bool and `fieldIds` a list — [toMap]
-/// always writes all four.
+/// A `categories` row. Written by clients (editor+) under row level
+/// security and the table's CHECKs: `name` 1–60 chars, `kind` one of
+/// income/expense/any, `field_ids` a uuid list — [toRow] always writes them
+/// all. Deleted (softly) only by the `delete_category` RPC.
 ///
 /// Archived categories stay readable by id: confirmed transactions keep a
 /// `categoryName` snapshot, but a draft or a report may still resolve one.
@@ -26,8 +24,9 @@ class Category extends Equatable {
     this.updatedAt,
   });
 
-  factory Category.fromFirestore(DocumentSnapshot<JsonMap> doc) =>
-      Category.fromMap(doc.id, doc.data() ?? const {});
+  /// A Postgres row (snake_case).
+  factory Category.fromRow(Map<String, dynamic> row) =>
+      Category.fromMap(row.readString('id'), RowKeys.camelMap(row));
 
   factory Category.fromMap(String id, Map<String, dynamic> map) => Category(
     id: id,
@@ -68,6 +67,13 @@ class Category extends Equatable {
     'fieldIds': fieldIds,
     'sortOrder': sortOrder,
     'archived': archived,
+  };
+
+  /// The row a client writes (insert or update) for [businessId].
+  Map<String, Object?> toRow(String businessId) => {
+    'id': id,
+    'business_id': businessId,
+    ...RowKeys.snakeMap(toMap()),
   };
 
   Category copyWith({

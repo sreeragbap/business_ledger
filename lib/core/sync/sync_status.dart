@@ -9,7 +9,7 @@ class SyncStatus extends Equatable {
     this.syncing = false,
     this.pendingCount = 0,
     this.failedCount = 0,
-    this.firestoreHasPendingWrites = false,
+    this.localChanges = 0,
     this.lastSyncedAt,
   });
 
@@ -19,28 +19,28 @@ class SyncStatus extends Equatable {
   /// The device has a network interface up.
   final bool online;
 
-  /// An outbox entry is being sent, or the engine is waiting for local
-  /// writes to reach the server first.
+  /// An outbox entry is being sent.
   final bool syncing;
 
-  /// Outbox entries waiting (pending or being sent).
+  /// Outbox entries waiting (pending or being sent): money actions and
+  /// local row writes.
   final int pendingCount;
 
   /// Outbox entries the server refused.
   final int failedCount;
 
-  /// Draft / configuration writes that Firestore has queued but the server
-  /// has not acknowledged. A heuristic (Firestore has no "pending count"
-  /// API): writes this session handed off without an acknowledgement, plus
-  /// a `waitForPendingWrites()` probe at start and on reconnect that has
-  /// not completed within a grace period.
-  final bool firestoreHasPendingWrites;
+  /// Of [pendingCount], the drafts and settings written on this device and
+  /// not uploaded yet (exact: each is an outbox entry).
+  final int localChanges;
 
-  /// When the outbox last applied an entry on the server.
+  /// When this device last finished a push or pull with the server.
   final DateTime? lastSyncedAt;
 
   /// The engine is allowed to send.
   bool get canSync => online && syncEnabled;
+
+  /// Drafts or settings saved on this device wait to be uploaded.
+  bool get hasLocalChanges => localChanges > 0;
 
   /// Nothing to show: online, on, and nothing waiting.
   bool get isIdle =>
@@ -48,7 +48,7 @@ class SyncStatus extends Equatable {
       !syncing &&
       pendingCount == 0 &&
       failedCount == 0 &&
-      !firestoreHasPendingWrites;
+      !hasLocalChanges;
 
   SyncStatus copyWith({
     bool? syncEnabled,
@@ -56,7 +56,7 @@ class SyncStatus extends Equatable {
     bool? syncing,
     int? pendingCount,
     int? failedCount,
-    bool? firestoreHasPendingWrites,
+    int? localChanges,
     DateTime? lastSyncedAt,
   }) => SyncStatus(
     syncEnabled: syncEnabled ?? this.syncEnabled,
@@ -64,8 +64,7 @@ class SyncStatus extends Equatable {
     syncing: syncing ?? this.syncing,
     pendingCount: pendingCount ?? this.pendingCount,
     failedCount: failedCount ?? this.failedCount,
-    firestoreHasPendingWrites:
-        firestoreHasPendingWrites ?? this.firestoreHasPendingWrites,
+    localChanges: localChanges ?? this.localChanges,
     lastSyncedAt: lastSyncedAt ?? this.lastSyncedAt,
   );
 
@@ -76,7 +75,7 @@ class SyncStatus extends Equatable {
     syncing,
     pendingCount,
     failedCount,
-    firestoreHasPendingWrites,
+    localChanges,
     lastSyncedAt,
   ];
 }

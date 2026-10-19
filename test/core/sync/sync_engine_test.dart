@@ -1,42 +1,49 @@
-import 'dart:async';
-
+import 'package:business_ledger/core/database/local_store.dart';
+import 'package:business_ledger/core/database/sync_table.dart';
 import 'package:business_ledger/core/domain/app_exception.dart';
 import 'package:business_ledger/core/domain/app_result.dart';
+import 'package:business_ledger/core/supabase/rpc_client.dart';
+import 'package:business_ledger/core/sync/cloud_availability.dart';
 import 'package:business_ledger/core/sync/outbox.dart';
 import 'package:business_ledger/core/sync/outbox_entry.dart';
-import 'package:business_ledger/core/sync/pending_writes_tracker.dart';
+import 'package:business_ledger/core/sync/outbox_executor.dart';
+import 'package:business_ledger/core/sync/profile_sync.dart';
 import 'package:business_ledger/core/sync/sync_engine.dart';
 import 'package:business_ledger/core/sync/sync_error_policy.dart';
+import 'package:business_ledger/core/sync/sync_puller.dart';
 import 'package:business_ledger/core/sync/sync_settings.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../support/fake_backend.dart';
 import 'sync_fakes.dart';
 
 void main() {
-  late MemoryOutboxStore store;
+  late MemoryOutboxStore outboxStore;
   late Outbox outbox;
   late FakeExecutor executor;
-  late FakeNetwork network;
   late FakeConnectivityService connectivity;
   late SyncSettings settings;
   late FakeIdentity identity;
-  late PendingWritesTracker writes;
+  late FakeRemoteTables remote;
+  late LocalStore store;
   late FakeTimers timers;
+  late FakeTimers pullTimers;
   late DateTime now;
   SyncEngine? engine;
 
   setUp(() async {
     SharedPreferences.setMockInitialValues({});
-    store = MemoryOutboxStore();
-    outbox = Outbox(store);
+    outboxStore = MemoryOutboxStore();
+    outbox = Outbox(outboxStore);
     executor = FakeExecutor();
-    network = FakeNetwork();
     connectivity = FakeConnectivityService();
-    settings = SyncSettings(await SharedPreferences.getInstance(), network);
+    settings = SyncSettings(await SharedPreferences.getInstance());
     identity = FakeIdentity();
-    writes = PendingWritesTracker();
+    remote = FakeRemoteTables();
+    store = memoryStore();
     timers = FakeTimers();
+    pullTimers = FakeTimers();
     now = DateTime.utc(2026, 3, 14, 12);
   });
 
@@ -46,27 +53,24 @@ void main() {
     await outbox.dispose();
     await connectivity.dispose();
     await identity.dispose();
-    await writes.dispose();
     await settings.dispose();
+    await store.db.close();
   });
 
-  Future<SyncEngine> start(
-    List<OutboxEntry> queued, {
-    Duration writesTimeout = const Duration(milliseconds: 20),
-  }) async {
-    store.saved = List.of(queued);
+  Future<SyncEngine> start(List<OutboxEntry> queued) async {
+    outboxStore.saved = List.of(queued);
     final created = SyncEngine(
       outbox,
       executor,
-      network,
       connectivity,
       settings,
       identity,
-      writes,
+      SyncPuller(remote, store),
+      store,
+      ProfileSync(store, remote),
       now: () => now,
       timer: timers.call,
-      pendingWritesTimeout: writesTimeout,
-      probeGrace: const Duration(milliseconds: 5),
+      pullTimer: pullTimers.call,
     );
     engine = created;
     await created.start();
@@ -269,7 +273,7 @@ void main() {
     await settle();
     expect(executor.sent, isEmpty, reason: 'sync is off');
     expect(sync.status.syncEnabled, isFalse);
-    expect(network.disables, 1);
+    expect(remote.calls, isEmpty, reason: 'no pull either');
 
     await settings.setEnabled(value: true);
     await settle();
@@ -295,25 +299,6 @@ void main() {
     expect(executor.sentIds, ['mine', 'theirs']);
   });
 
-  test('waits for local Firestore writes first; a timeout sends nothing and '
-      'retries later', () async {
-    network.pendingWrites = Completer<void>();
-    final sync = await start([entry('confirm', kind: OutboxKind.confirm)]);
-    await Future<void>.delayed(const Duration(milliseconds: 40));
-    await settle();
-    expect(executor.sent, isEmpty);
-    expect(sync.status.firestoreHasPendingWrites, isTrue);
-    expect(stored('confirm')!.attempts, 0, reason: 'not an attempt');
-    expect(timers.active!.delay, const Duration(seconds: 5));
-
-    network.pendingWrites!.complete();
-    now = now.add(const Duration(seconds: 5));
-    timers.fire();
-    await settle();
-    expect(executor.sentIds, ['confirm']);
-    expect(sync.status.firestoreHasPendingWrites, isFalse);
-  });
-
   test('discard removes the entry and, after it, its dependents', () async {
     executor.answer('pay', [const Failure(violation)]);
     final sync = await start([
@@ -329,20 +314,254 @@ void main() {
     expect(outbox.entries, isEmpty);
   });
 
-  test('status: pending, failed and local writes for the banner', () async {
+  test('status: pending, failed and local changes for the banner', () async {
     connectivity.online = false;
     final sync = await start([
       entry('a'),
       entry('b', status: OutboxStatus.failed),
+      rowWrite('draft', tx: 'd1'),
     ]);
-    writes.begin();
-    await settle();
     expect(sync.status.online, isFalse);
-    expect(sync.status.pendingCount, 1);
+    expect(sync.status.pendingCount, 2);
     expect(sync.status.failedCount, 1);
-    expect(sync.status.firestoreHasPendingWrites, isTrue);
-    writes.end();
-    await settle();
-    expect(sync.status.firestoreHasPendingWrites, isFalse);
+    expect(sync.status.localChanges, 1);
+    expect(sync.status.hasLocalChanges, isTrue);
+  });
+
+  group('row writes', () {
+    test(
+      "a draft's upsert replays before the confirm queued after it",
+      () async {
+        await start([
+          rowWrite('draft'),
+          entry('confirm', kind: OutboxKind.confirm),
+          entry('pay'),
+        ]);
+        expect(executor.sentIds, ['draft', 'confirm', 'pay']);
+      },
+    );
+
+    test('a refused draft holds back its confirm; others go on', () async {
+      executor.answer('draft', [
+        Failure(
+          serverError('permission-denied', AppErrorKind.permissionDenied),
+        ),
+      ]);
+      final sync = await start([
+        rowWrite('draft'),
+        entry('confirm', kind: OutboxKind.confirm),
+        entry('elsewhere', tx: 't2'),
+      ]);
+      expect(executor.sentIds, ['draft', 'elsewhere']);
+      expect(stored('draft')!.status, OutboxStatus.failed);
+      expect(stored('confirm')!.status, OutboxStatus.pending);
+      expect(sync.status.failedCount, 1);
+    });
+
+    test('a pushed row is no longer pending locally, unless another queued '
+        'write still touches it', () async {
+      await store.claimFor('u1');
+      await store.writeLocal(SyncTable.categories, {
+        'id': 'c1',
+        'business_id': 'b1',
+        'name': 'Food',
+      });
+      await store.writeLocal(SyncTable.categories, {
+        'id': 'c2',
+        'business_id': 'b1',
+        'name': 'Fuel',
+      });
+      executor.answer('second', [
+        Failure(serverError('internal', AppErrorKind.unknown)),
+      ]);
+      await start([
+        rowWrite('first', table: 'categories', row: 'c1', tx: null),
+        rowWrite('second', table: 'categories', row: 'c2', tx: null),
+      ]);
+      expect(
+        (await store.readRow(SyncTable.categories, {
+          'id': 'c1',
+        }))!['local_pending'],
+        isFalse,
+      );
+      expect(
+        (await store.readRow(SyncTable.categories, {
+          'id': 'c2',
+        }))!['local_pending'],
+        isTrue,
+        reason: 'its write is still waiting (backoff)',
+      );
+    });
+
+    test('end to end: RLS refusing a pushed draft fails the entry and keeps '
+        'the local row pending', () async {
+      await store.claimFor('u1');
+      remote.refuse.add('transactions');
+      await store.writeLocal(SyncTable.transactions, {
+        'id': 'd1',
+        'business_id': 'b1',
+        'status': 'draft',
+      });
+      final rpc = FakeRemoteRpc();
+      final availability = CloudAvailability(connectivity, settings, identity);
+      final real = SyncEngine(
+        outbox,
+        SupabaseOutboxExecutor(RpcClient(rpc, availability), remote),
+        connectivity,
+        settings,
+        identity,
+        SyncPuller(remote, store),
+        store,
+        ProfileSync(store, remote),
+        now: () => now,
+        timer: timers.call,
+        pullTimer: pullTimers.call,
+      );
+      engine = real;
+      outboxStore.saved = [
+        rowWrite('draft', tx: 'd1'),
+        entry('confirm', tx: 'd1', kind: OutboxKind.confirm),
+      ];
+      await real.start();
+      await settle();
+      expect(remote.calls, contains('upsert transactions'));
+      expect(stored('draft')!.status, OutboxStatus.failed);
+      expect(stored('draft')!.lastError!.code, 'permission-denied');
+      expect(stored('confirm')!.status, OutboxStatus.pending);
+      expect(rpc.calls, isEmpty, reason: 'held back behind its draft');
+      final local = await store.readRow(SyncTable.transactions, {'id': 'd1'});
+      expect(local!['local_pending'], isTrue);
+    });
+
+    test(
+      'discarding a row write drops the local row and re-pulls its table',
+      () async {
+        await store.claimFor('u1');
+        executor.answer('draft', [
+          Failure(
+            serverError('permission-denied', AppErrorKind.permissionDenied),
+          ),
+        ]);
+        await store.writeLocal(SyncTable.transactions, {
+          'id': 'd1',
+          'business_id': 'b1',
+          'status': 'draft',
+        });
+        await store.setCursor('b1', SyncTable.transactions, 40);
+        final sync = await start([rowWrite('draft', tx: 'd1')]);
+        await sync.discard('draft');
+        await settle();
+        expect(
+          await store.readRow(SyncTable.transactions, {'id': 'd1'}),
+          isNull,
+        );
+        expect(await store.cursor('b1', SyncTable.transactions), 0);
+      },
+    );
+  });
+
+  group('pull', () {
+    test('runs on start and after a push that applied something', () async {
+      remote.seed('businesses', {'id': 'b1', 'name': 'Shop'});
+      final sync = await start([]);
+      expect(remote.calls.where((c) => c == 'select businesses'), hasLength(1));
+      expect(sync.status.lastSyncedAt, now);
+      expect(await store.businessIds(), ['b1']);
+
+      await outbox.add(entry('pay'));
+      await settle();
+      expect(executor.sentIds, ['pay']);
+      expect(remote.calls.where((c) => c == 'select businesses'), hasLength(2));
+    });
+
+    test(
+      'runs again on reconnect, on sync switched on and periodically',
+      () async {
+        await start([]);
+        int pulls() =>
+            remote.calls.where((c) => c == 'select businesses').length;
+        expect(pulls(), 1);
+
+        connectivity.online = false;
+        await settle();
+        connectivity.online = true;
+        await settle();
+        expect(pulls(), 2);
+
+        await settings.setEnabled(value: false);
+        await settle();
+        await settings.setEnabled(value: true);
+        await settle();
+        expect(pulls(), 3);
+
+        expect(pullTimers.active!.delay, SyncEngine.defaultPullInterval);
+        pullTimers.fire();
+        await settle();
+        expect(pulls(), 4);
+      },
+    );
+
+    test(
+      'pauses the periodic pull in the background; pulls on return',
+      () async {
+        final sync = await start([]);
+        int pulls() =>
+            remote.calls.where((c) => c == 'select businesses').length;
+        sync.setForeground(foreground: false);
+        expect(pullTimers.active, isNull);
+        sync.setForeground(foreground: true);
+        await settle();
+        expect(pulls(), 2);
+        expect(pullTimers.active, isNotNull);
+      },
+    );
+
+    test('refresh (pull-to-refresh) completes with the pull', () async {
+      final sync = await start([]);
+      remote.seed('businesses', {'id': 'b2', 'name': 'New'});
+      final result = await sync.refresh();
+      expect(result.isSuccess, isTrue);
+      expect(await store.businessIds(), ['b2']);
+
+      connectivity.online = false;
+      await settle();
+      expect((await sync.refresh()).errorOrNull?.kind, AppErrorKind.offline);
+    });
+
+    test('a new user signing in gets a wiped store, then their pull', () async {
+      remote.seed('businesses', {'id': 'b1', 'name': 'Shop'});
+      await start([]);
+      expect(await store.businessIds(), ['b1']);
+
+      remote.memberOf = {};
+      identity.current = 'u2';
+      await settle();
+      expect(await store.businessIds(), isEmpty);
+    });
   });
 }
+
+int _rowSeq = 0;
+
+/// A queued row write of user `u1`: an upsert of row [row] (default: [tx])
+/// of [table] in business `b1`.
+OutboxEntry rowWrite(
+  String id, {
+  String table = 'transactions',
+  String? row,
+  String? tx = 't1',
+}) => OutboxEntry(
+  id: id,
+  uid: 'u1',
+  businessId: 'b1',
+  kind: OutboxKind.upsert,
+  payload: {
+    'table': table,
+    'rows': [
+      {'id': row ?? tx ?? id, 'business_id': 'b1'},
+    ],
+  },
+  transactionId: tx,
+  label: 'Row $id',
+  createdAt: DateTime.utc(2026, 3, 14, 8, 0, _rowSeq++ % 60),
+);
