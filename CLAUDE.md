@@ -107,7 +107,9 @@ The same applies to search tokens (`search_tokens.dart` / `searchTokens()`).
 
 | Decision | Why |
 |---|---|
-| Firebase is the backend; Supabase was considered and rejected | Brief requires Firebase; Firestore gives offline caching and sync for free |
+| **Migrating data to Supabase (Postgres)** — in progress. Firebase stays for **Google/Apple sign-in, push notifications (FCM) and Crashlytics**; Firestore, Cloud Functions and their rules/tests will be removed | User's decision (2026-10). Supabase project `unvpyjnotaukdxgmpytr` (Mumbai), URL `https://unvpyjnotaukdxgmpytr.supabase.co`, publishable key in app config. Supabase trusts Firebase ID tokens (Third-party Auth → Firebase) |
+| Money logic moves to **Postgres functions** (RPC) with row locks + `requests` idempotency | Replaces the 10 Cloud Functions; no Firebase Blaze plan needed |
+| Offline = **on-device SQLite (drift) + own sync** (outbox push, pull rows by `seq` cursor) | Supabase has no offline cache; keeps the Cloud sync switch and pending-sync UX |
 | **Text only — no file storage** (no attachments, no Cloud Storage, no stored PDFs) | User's choice; documents are re-drawn from their stored snapshot (deviation from brief §3/§8) |
 | Server decides all money changes; phone writes only drafts and settings | Security rules enforce it; a modified app can't fake balances |
 | **Local-first sync** with a per-device *Cloud sync* switch (Settings › Sync) | Works with no network; money actions queue as "Pending sync" and replay in order; refusals shown for retry/discard; queued payments count in on-phone checks; sign-out blocked while unsynced |
@@ -223,6 +225,18 @@ its own SHA fingerprints.
 ---
 
 ## 9. What's next
+
+Supabase migration plan:
+- **Phase A** — `supabase/`: schema, RLS, RPCs, SQL ledger rules, tests in
+  PGlite (`cd supabase/tests && npm test`). Nothing applied remotely without OK.
+- **Phase B** — app data layer on drift + Supabase client (Firebase ID token as
+  access token), sync engine pull/push, error mapping from Postgres errors.
+- **Phase C** — remove Firestore, Cloud Functions, rules, indexes, emulator
+  tests; update CI/docs/this file.
+- **Phase D** — push notifications via FCM, sent from a Supabase Edge Function.
+
+Until Phase C lands, sections 2–8 still describe the Firestore implementation.
+
 
 - Stage 9: polish, error handling, an end-to-end test against the emulators.
 - Stage 10: deploy (after console steps + OK), test on real devices.
