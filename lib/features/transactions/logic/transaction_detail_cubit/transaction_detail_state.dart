@@ -21,11 +21,16 @@ class TransactionDetailState extends Equatable {
     this.actionStatus = const Status.initial(),
     this.removed = false,
     this.duplicatedId,
+    this.queued = const [],
+    this.actionQueued = false,
   });
 
   final String? businessId;
   final String? transactionId;
   final Role role;
+
+  /// The cloud is reachable: online and Cloud sync on. Money actions work
+  /// either way (queued when not); issuing documents needs it.
   final bool online;
 
   /// `yyyy-MM-dd`.
@@ -57,6 +62,27 @@ class TransactionDetailState extends Equatable {
   /// Set after [TransactionDetailCubit.duplicate] succeeds.
   final String? duplicatedId;
 
+  /// This user's actions on this transaction still waiting in the outbox,
+  /// oldest first. Not reflected in [transaction]: the balance on screen is
+  /// the server's until they are applied.
+  final List<OutboxEntry> queued;
+
+  /// The last action was queued rather than applied.
+  final bool actionQueued;
+
+  bool get hasQueued => queued.isNotEmpty;
+
+  SyncMark get syncMark => SyncMark.of(queued);
+
+  /// What the queued actions will do, for checking new settlements.
+  PendingSettlements get pending => PendingSettlements.of(queued);
+
+  /// A draft whose confirm is queued: money can already be recorded
+  /// against it (queued behind the confirm).
+  bool get confirmQueued => pending.confirmQueued;
+
+  bool _isQueued(OutboxKind kind) => queued.any((entry) => entry.kind == kind);
+
   bool get isOverdue => transaction?.isOverdue(today) ?? false;
 
   bool get showsAudit => role.canDoFinancial;
@@ -66,8 +92,6 @@ class TransactionDetailState extends Equatable {
   String? blockedReason(DetailAction action) {
     final tx = transaction;
     if (tx == null) return 'Still loading.';
-    String? needsOnline() =>
-        online ? null : "You're offline. This needs a connection.";
     switch (action) {
       case DetailAction.confirm || DetailAction.confirmPaid:
         if (!tx.isDraft) return 'Only drafts can be confirmed.';
@@ -78,10 +102,16 @@ class TransactionDetailState extends Equatable {
             (!tx.type.settleable || tx.type == TransactionType.payment)) {
           return 'This type is not settled on confirm.';
         }
-        return needsOnline();
+        if (_isQueued(OutboxKind.confirm)) {
+          return 'A confirm is already waiting to sync.';
+        }
+        return null;
       case DetailAction.cancel:
         if (!role.canDoFinancial) return 'Only admins and owners can cancel.';
-        return tx.cancelBlockedReason() ?? needsOnline();
+        if (_isQueued(OutboxKind.cancel)) {
+          return 'A cancel is already waiting to sync.';
+        }
+        return tx.cancelBlockedReason(pending: pending);
       case DetailAction.delete:
         if (!tx.isDraft) return 'Only drafts can be deleted.';
         if (!role.canEditConfig) return 'Viewers cannot delete drafts.';
@@ -103,7 +133,7 @@ class TransactionDetailState extends Equatable {
         if (!role.canDoFinancial) {
           return 'Only admins and owners can change a confirmed transaction.';
         }
-        return needsOnline();
+        return null;
     }
   }
 
@@ -116,8 +146,8 @@ class TransactionDetailState extends Equatable {
     if (!role.canDoFinancial) {
       return 'Only admins and owners can record money.';
     }
-    return tx.settlementUnavailableReason(kind) ??
-        (online ? null : "You're offline. Recording money needs a connection.");
+    // Offline or sync off is fine: the settlement is queued.
+    return tx.settlementUnavailableReason(kind, pending: pending);
   }
 
   bool get canSettleAny => SettlementKind.values.any(
@@ -140,6 +170,8 @@ class TransactionDetailState extends Equatable {
     Status? actionStatus,
     bool? removed,
     String? Function()? duplicatedId,
+    List<OutboxEntry>? queued,
+    bool? actionQueued,
   }) => TransactionDetailState(
     businessId: businessId,
     transactionId: transactionId,
@@ -158,6 +190,8 @@ class TransactionDetailState extends Equatable {
     actionStatus: actionStatus ?? this.actionStatus,
     removed: removed ?? this.removed,
     duplicatedId: duplicatedId == null ? this.duplicatedId : duplicatedId(),
+    queued: queued ?? this.queued,
+    actionQueued: actionQueued ?? this.actionQueued,
   );
 
   @override
@@ -179,5 +213,7 @@ class TransactionDetailState extends Equatable {
     actionStatus,
     removed,
     duplicatedId,
+    queued,
+    actionQueued,
   ];
 }

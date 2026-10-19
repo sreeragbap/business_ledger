@@ -1,6 +1,5 @@
-import 'package:business_ledger/core/domain/app_exception.dart';
 import 'package:business_ledger/core/domain/app_result.dart';
-import 'package:business_ledger/core/firebase/connectivity_service.dart';
+import 'package:business_ledger/core/sync/cloud_availability.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:injectable/injectable.dart';
 
@@ -9,12 +8,17 @@ import 'package:injectable/injectable.dart';
 /// It adds nothing to the payload: callers put a `requestId` from
 /// `RequestIds.next()` in the payload themselves, because only the caller knows
 /// which taps are retries of the same intent.
+///
+/// Money actions (confirm, settle, edit, cancel) do not call this directly
+/// any more: they go through `SyncQueue`, which queues them in the outbox
+/// when the cloud is unavailable. Everything else (create business, members,
+/// delete category, issue document) cannot wait and is refused up front.
 @lazySingleton
 class CallableClient {
-  CallableClient(this._functions, this._connectivity);
+  CallableClient(this._functions, this._availability);
 
   final FirebaseFunctions _functions;
-  final ConnectivityService _connectivity;
+  final CloudAvailability _availability;
 
   /// Generous: a confirm with stats and audit writes is a multi-document
   /// transaction, and a cold start in `asia-south1` adds seconds.
@@ -22,16 +26,18 @@ class CallableClient {
 
   /// Calls [name] with [data].
   ///
-  /// With [requiresOnline] (the default, for every financial operation) the
-  /// call is refused up front when the device is offline, rather than handed
-  /// to the SDK to fail slowly.
+  /// With [requiresOnline] (the default) the call is refused up front when
+  /// the device is offline or Cloud sync is off, rather than handed to the
+  /// SDK to fail slowly (or, with sync off, to quietly go out anyway: the
+  /// switch only stops Firestore, not Functions). `SyncQueue` and the sync
+  /// engine pass `false`: they have already checked.
   Future<AppResult<Map<String, dynamic>>> call(
     String name,
-    Map<String, dynamic> data, {
+    Map<String, Object?> data, {
     bool requiresOnline = true,
   }) async {
-    if (requiresOnline && !await _connectivity.refresh()) {
-      return const Failure(AppException.offline());
+    if (requiresOnline && !await _availability.refresh()) {
+      return Failure(_availability.unavailableError);
     }
     return AppResult.guard(() async {
       final result = await _functions

@@ -14,4 +14,4 @@ export 'app_shimmer.dart';
 export 'app_snack_bar.dart';
 export 'app_status_chip.dart';
 export 'app_text_field.dart';
-export 'offline_banner.dart';
+export 'pending_sync_badge.dart';

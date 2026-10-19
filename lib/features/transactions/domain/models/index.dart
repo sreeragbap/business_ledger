@@ -2,6 +2,8 @@ export 'audit_entry.dart';
 export 'ledger_dates.dart';
 export 'ledger_transaction.dart';
 export 'line_item.dart';
+export 'pending_settlements.dart';
+export 'queue_labels.dart';
 export 'settlement.dart';
 export 'settlement_rules.dart';
 export 'transaction_draft.dart';

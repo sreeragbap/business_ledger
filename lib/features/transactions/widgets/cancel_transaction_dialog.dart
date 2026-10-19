@@ -7,15 +7,24 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 
 /// Asks for confirmation (and an optional reason) before voiding a
 /// transaction. Resolves the reason (possibly empty) on confirm, `null`
-/// when dismissed.
-Future<String?> showCancelTransactionDialog(BuildContext context) =>
-    showDialog<String>(
-      context: context,
-      builder: (_) => const CancelTransactionDialog(),
-    );
+/// when dismissed. [queued] adds that it will apply only when synced.
+Future<String?> showCancelTransactionDialog(
+  BuildContext context, {
+  bool queued = false,
+}) => showDialog<String>(
+  context: context,
+  builder: (_) => CancelTransactionDialog(queued: queued),
+);
 
 class CancelTransactionDialog extends StatefulWidget {
-  const CancelTransactionDialog({super.key});
+  const CancelTransactionDialog({this.queued = false, super.key});
+
+  /// The cloud is unreachable: the cancel will be queued.
+  final bool queued;
+
+  static const String queuedNote =
+      'Not syncing right now: the cancel is kept on this device and applied '
+      'when synced. It may be refused if the transaction changed meanwhile.';
 
   /// `text(500)` in the functions schema.
   static const int maxReasonLength = 500;
@@ -50,6 +59,13 @@ class _CancelTransactionDialogState extends State<CancelTransactionDialog> {
               'for it is voided too. This cannot be undone.',
               style: textTheme.bodyMedium,
             ),
+            if (widget.queued) ...[
+              SizedBox(height: AppSpacing.sm.h),
+              Text(
+                CancelTransactionDialog.queuedNote,
+                style: textTheme.bodySmall?.copyWith(color: AppColors.warning),
+              ),
+            ],
             SizedBox(height: AppSpacing.lg.h),
             AppTextField(
               controller: _reason,

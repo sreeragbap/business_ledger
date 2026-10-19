@@ -21,8 +21,6 @@ import 'package:business_ledger/features/parties/widgets/party_form_sheet.dart';
 import 'package:business_ledger/features/transactions/domain/const/transaction_filters.dart';
 import 'package:business_ledger/features/transactions/domain/models/transaction_draft.dart';
 import 'package:business_ledger/features/transactions/logic/transaction_form_cubit/transaction_form_cubit.dart';
-import 'package:business_ledger/features/transactions/widgets/attachment_picker.dart';
-import 'package:business_ledger/features/transactions/widgets/detail_sections.dart';
 import 'package:business_ledger/features/transactions/widgets/ledger_date_field.dart';
 import 'package:business_ledger/features/transactions/widgets/option_sheet.dart';
 import 'package:business_ledger/features/transactions/widgets/transaction_form_fields.dart';
@@ -35,13 +33,11 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 class TransactionFormView extends StatelessWidget {
   const TransactionFormView({
     required this.onDone,
-    this.onOpenAttachment,
     super.key,
   });
 
   final void Function(TransactionFormOutcome outcome, String transactionId)
   onDone;
-  final ValueChanged<String>? onOpenAttachment;
 
   @override
   Widget build(BuildContext context) {
@@ -61,20 +57,6 @@ class TransactionFormView extends StatelessWidget {
             state.saveStatus.message,
             kind: AppSnackBarKind.error,
           ),
-        ),
-        BlocListener<TransactionFormCubit, TransactionFormState>(
-          listenWhen: (p, c) =>
-              p.uploadStatus != c.uploadStatus && !c.uploadStatus.isLoading,
-          listener: (context, state) {
-            final status = state.uploadStatus;
-            if (status.isFailure) {
-              showAppSnackBar(
-                context,
-                status.message,
-                kind: AppSnackBarKind.error,
-              );
-            }
-          },
         ),
       ],
       child: BlocBuilder<TransactionFormCubit, TransactionFormState>(
@@ -305,15 +287,6 @@ class _Form extends StatelessWidget {
                 ),
                 gap,
               ],
-            ],
-            if (state.isEnabled(StandardField.attachments)) ...[
-              sectionGap,
-              _AttachmentsSection(
-                paths: draft.attachments,
-                onOpen: context
-                    .findAncestorWidgetOfExactType<TransactionFormView>()
-                    ?.onOpenAttachment,
-              ),
             ],
           ],
         );
@@ -596,58 +569,6 @@ class _PaymentMethodFieldState extends State<_PaymentMethodField> {
   }
 }
 
-class _AttachmentsSection extends StatelessWidget {
-  const _AttachmentsSection({required this.paths, this.onOpen});
-
-  final List<String> paths;
-  final ValueChanged<String>? onOpen;
-
-  @override
-  Widget build(BuildContext context) {
-    final cubit = context.read<TransactionFormCubit>();
-    final state = cubit.state;
-    final blocked = state.attachBlockedReason;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        AppSectionLabel(
-          paths.isEmpty ? 'Attachments' : 'Attachments · ${paths.length}',
-        ),
-        if (paths.isNotEmpty) ...[
-          AttachmentChips(
-            paths: paths,
-            onOpen: onOpen ?? (_) {},
-            onRemove: cubit.removeAttachment,
-          ),
-          SizedBox(height: AppSpacing.sm.h),
-        ],
-        Align(
-          alignment: Alignment.centerLeft,
-          child: AppButton.secondary(
-            label: 'Attach photo or PDF',
-            icon: Icons.attach_file_rounded,
-            expand: false,
-            isLoading: state.uploadStatus.isLoading,
-            onPressed: blocked != null
-                ? null
-                : () async {
-                    final file = await pickAttachment(context);
-                    if (file != null) await cubit.addAttachment(file);
-                  },
-          ),
-        ),
-        Padding(
-          padding: EdgeInsets.only(top: AppSpacing.xs.h),
-          child: Text(
-            blocked ?? 'Images or PDF, up to 10 MB each.',
-            style: Theme.of(context).textTheme.bodySmall,
-          ),
-        ),
-      ],
-    );
-  }
-}
-
 class _ConflictCard extends StatelessWidget {
   const _ConflictCard({required this.onReload});
 
@@ -702,13 +623,13 @@ class _ActionBar extends StatelessWidget {
         final buttons = <Widget>[];
         String? note;
         if (state.isConfirmedEdit) {
-          note = state.editBlockedReason;
+          note = state.editBlockedReason ?? state.queueNote;
           buttons.add(
             AppButton(
               label: 'Save changes',
               icon: Icons.check_rounded,
               isLoading: loading,
-              onPressed: note == null && !state.isBusy
+              onPressed: state.editBlockedReason == null && !state.isBusy
                   ? () => unawaited(cubit.saveConfirmedChanges())
                   : null,
             ),
@@ -738,7 +659,7 @@ class _ActionBar extends StatelessWidget {
             );
           }
           note = state.role.canDoFinancial
-              ? state.confirmBlockedReason
+              ? state.confirmBlockedReason ?? state.queueNote
               : state.role.canEditConfig
               ? 'An admin or owner confirms drafts.'
               : 'Viewers cannot record transactions.';

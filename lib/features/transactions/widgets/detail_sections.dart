@@ -13,7 +13,6 @@ import 'package:business_ledger/features/transactions/domain/models/ledger_dates
 import 'package:business_ledger/features/transactions/domain/models/ledger_transaction.dart';
 import 'package:business_ledger/features/transactions/domain/models/line_item.dart';
 import 'package:business_ledger/features/transactions/domain/models/settlement.dart';
-import 'package:business_ledger/features/transactions/domain/models/transaction_results.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:intl/intl.dart';
@@ -484,50 +483,6 @@ class AuditHistory extends StatelessWidget {
                 ),
               ],
             ),
-          ),
-      ],
-    );
-  }
-}
-
-/// Stored attachments as tappable chips.
-class AttachmentChips extends StatelessWidget {
-  const AttachmentChips({
-    required this.paths,
-    required this.onOpen,
-    this.onRemove,
-    super.key,
-  });
-
-  final List<String> paths;
-  final ValueChanged<String> onOpen;
-  final ValueChanged<String>? onRemove;
-
-  @override
-  Widget build(BuildContext context) {
-    return Wrap(
-      spacing: AppSpacing.sm.w,
-      runSpacing: AppSpacing.sm.h,
-      children: [
-        for (final path in paths)
-          InputChip(
-            avatar: Icon(
-              PickedAttachment.pathIsPdf(path)
-                  ? Icons.picture_as_pdf_outlined
-                  : Icons.image_outlined,
-              size: 18.r,
-            ),
-            label: ConstrainedBox(
-              constraints: BoxConstraints(maxWidth: 180.w),
-              child: Text(
-                PickedAttachment.displayName(path),
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-            tooltip: 'Open ${PickedAttachment.displayName(path)}',
-            onPressed: () => onOpen(path),
-            onDeleted: onRemove == null ? null : () => onRemove!(path),
-            deleteButtonTooltipMessage: 'Remove attachment',
           ),
       ],
     );

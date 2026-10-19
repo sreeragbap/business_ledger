@@ -39,8 +39,7 @@ them must:
 1. update **both** implementations in the same PR,
 2. add or update cases in `shared/ledger_cases.json`, which both
    `flutter test` and `cd functions && npm test` run against,
-3. run `npm run test:emulator` if `firestore.rules` or `storage.rules`
-   changed.
+3. run `npm run test:emulator` if `firestore.rules` changed.
 
 ## Before opening a PR
 

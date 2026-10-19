@@ -45,7 +45,6 @@ class LedgerTransaction extends Equatable {
     this.paymentStatus,
     this.isOpen = false,
     this.customFields = const {},
-    this.attachments = const [],
     this.searchTokens = const [],
     this.linkedTransactionId,
     this.linkKind,
@@ -116,7 +115,6 @@ class LedgerTransaction extends Equatable {
           : PaymentStatus.fromKey(paymentStatus),
       isOpen: map.readBool('isOpen'),
       customFields: Map.unmodifiable(map.readMap('customFields')),
-      attachments: map.readStringList('attachments'),
       searchTokens: map.readStringList('searchTokens'),
       linkedTransactionId: map.readOptionalString('linkedTransactionId'),
       linkKind: map.readOptionalString('linkKind'),
@@ -174,8 +172,6 @@ class LedgerTransaction extends Equatable {
   /// `{fieldId: value}`; see `FieldType` for each value's shape.
   final Map<String, dynamic> customFields;
 
-  /// Storage paths.
-  final List<String> attachments;
   final List<String> searchTokens;
 
   /// On a refund entry: the original transaction.
@@ -273,7 +269,6 @@ class LedgerTransaction extends Equatable {
     paymentStatus,
     isOpen,
     customFields,
-    attachments,
     searchTokens,
     linkedTransactionId,
     linkKind,

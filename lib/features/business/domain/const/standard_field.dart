@@ -40,13 +40,7 @@ enum StandardField {
     'An external number: PO, bill or cheque no.',
     Icons.tag_rounded,
   ),
-  notes('notes', 'Notes', 'Free text for anything else.', Icons.notes_rounded),
-  attachments(
-    'attachments',
-    'Attachments',
-    'Photos and PDFs of bills and receipts.',
-    Icons.attach_file_rounded,
-  );
+  notes('notes', 'Notes', 'Free text for anything else.', Icons.notes_rounded);
 
   const StandardField(this.key, this.label, this.description, this.icon);
 

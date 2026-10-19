@@ -6,9 +6,7 @@ import 'package:business_ledger/core/ledger/ledger_enums.dart';
 import 'package:business_ledger/core/router/app_router.dart';
 import 'package:business_ledger/core/widgets/app_snack_bar.dart';
 import 'package:business_ledger/features/business/logic/business_scope_cubit/business_scope_cubit.dart';
-import 'package:business_ledger/features/transactions/domain/repository/transaction_repository.dart';
 import 'package:business_ledger/features/transactions/logic/transaction_form_cubit/transaction_form_cubit.dart';
-import 'package:business_ledger/features/transactions/widgets/attachment_preview.dart';
 import 'package:business_ledger/features/transactions/widgets/success_check.dart';
 import 'package:business_ledger/features/transactions/widgets/transaction_form_view.dart';
 import 'package:flutter/material.dart';
@@ -53,13 +51,6 @@ class TransactionFormScreen extends StatelessWidget
   @override
   Widget build(BuildContext context) {
     return TransactionFormView(
-      onOpenAttachment: (path) => unawaited(
-        showAttachmentPreview(
-          context,
-          path: path,
-          load: () => getIt<TransactionRepository>().downloadAttachment(path),
-        ),
-      ),
       onDone: (outcome, id) {
         final router = context.router;
         final editing = transactionId != null;
@@ -78,6 +69,17 @@ class TransactionFormScreen extends StatelessWidget
               label: outcome == TransactionFormOutcome.confirmedPaid
                   ? 'Confirmed & paid'
                   : 'Confirmed',
+            );
+            unawaited(
+              editing
+                  ? router.maybePop()
+                  : router.replace(TransactionDetailRoute(transactionId: id)),
+            );
+          case TransactionFormOutcome.queued:
+            showAppSnackBar(
+              context,
+              context.read<TransactionFormCubit>().state.saveStatus.message,
+              kind: AppSnackBarKind.success,
             );
             unawaited(
               editing

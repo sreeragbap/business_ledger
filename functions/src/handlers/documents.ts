@@ -100,7 +100,6 @@ export const issueDocument = handler("issueDocument", s.issueDocument, async (ca
       issuedAt: FieldValue.serverTimestamp(),
       issuedBy: caller.uid,
       voided: false,
-      storagePath: null,
     });
     audit(tx, firestore, data.businessId, {
       entity: "document", entityId: documentId, action: "issue", actor: caller.uid,

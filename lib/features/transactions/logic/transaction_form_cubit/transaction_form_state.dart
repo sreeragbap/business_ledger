@@ -12,7 +12,15 @@ enum TransactionFormMode {
 }
 
 /// How the form finished, for the screen to navigate and celebrate.
-enum TransactionFormOutcome { savedDraft, confirmed, confirmedPaid, edited }
+enum TransactionFormOutcome {
+  savedDraft,
+  confirmed,
+  confirmedPaid,
+  edited,
+
+  /// Saved on the device; the confirm waits in the outbox until synced.
+  queued,
+}
 
 class TransactionFormState extends Equatable {
   const TransactionFormState({
@@ -33,7 +41,6 @@ class TransactionFormState extends Equatable {
     this.errors = const {},
     this.loadStatus = const Status.initial(),
     this.saveStatus = const Status.initial(),
-    this.uploadStatus = const Status.initial(),
     this.outcome,
   });
 
@@ -41,6 +48,9 @@ class TransactionFormState extends Equatable {
   final Currency currency;
   final Role role;
   final Set<StandardField> enabledFields;
+
+  /// The cloud is reachable (online and Cloud sync on). When not, drafts
+  /// save locally and confirms / edits are queued.
   final bool online;
   final TransactionFormMode mode;
 
@@ -66,7 +76,6 @@ class TransactionFormState extends Equatable {
   final Map<String, String> errors;
   final Status loadStatus;
   final Status saveStatus;
-  final Status uploadStatus;
   final TransactionFormOutcome? outcome;
 
   bool isEnabled(StandardField field) => enabledFields.contains(field);
@@ -114,7 +123,7 @@ class TransactionFormState extends Equatable {
 
   int get total => draft?.total ?? 0;
 
-  bool get isBusy => saveStatus.isLoading || uploadStatus.isLoading;
+  bool get isBusy => saveStatus.isLoading;
 
   bool get canSaveDraft => role.canEditConfig && !isConfirmedEdit;
 
@@ -124,14 +133,21 @@ class TransactionFormState extends Equatable {
       return 'Only admins and owners can confirm. Save it as a draft for '
           'them to review.';
     }
-    if (!online) {
-      return "You're offline. Save as a draft now and confirm once you're "
-          'back online.';
-    }
     return null;
   }
 
   bool get canConfirm => !isConfirmedEdit && confirmBlockedReason == null;
+
+  /// What the financial buttons do while the cloud is unreachable.
+  String? get queueNote => online
+      ? null
+      : isConfirmedEdit
+      ? 'Not syncing right now: the changes are kept on this device and '
+            'applied when synced. They may be refused if the transaction '
+            'changed meanwhile.'
+      : 'Not syncing right now: a confirm is kept on this device and '
+            'applied when synced. It may be refused if something changed '
+            'meanwhile.';
 
   /// "Save & confirm as paid": a settleable type that is not already
   /// settled on confirm (payments always are).
@@ -143,19 +159,6 @@ class TransactionFormState extends Equatable {
     if (!isConfirmedEdit) return null;
     if (!role.canDoFinancial) {
       return 'Only admins and owners can change a confirmed transaction.';
-    }
-    if (!online) {
-      return "You're offline. Changes to a confirmed transaction need a "
-          'connection.';
-    }
-    return null;
-  }
-
-  /// Why files cannot be attached right now, or `null`.
-  String? get attachBlockedReason {
-    if (!online) return "You're offline. Attach files once you're back online.";
-    if ((draft?.attachments.length ?? 0) >= TransactionDraft.maxAttachments) {
-      return 'Up to ${TransactionDraft.maxAttachments} attachments.';
     }
     return null;
   }
@@ -187,7 +190,6 @@ class TransactionFormState extends Equatable {
     Map<String, String>? errors,
     Status? loadStatus,
     Status? saveStatus,
-    Status? uploadStatus,
     TransactionFormOutcome? Function()? outcome,
   }) => TransactionFormState(
     businessId: businessId ?? this.businessId,
@@ -207,7 +209,6 @@ class TransactionFormState extends Equatable {
     errors: errors ?? this.errors,
     loadStatus: loadStatus ?? this.loadStatus,
     saveStatus: saveStatus ?? this.saveStatus,
-    uploadStatus: uploadStatus ?? this.uploadStatus,
     outcome: outcome == null ? this.outcome : outcome(),
   );
 
@@ -230,7 +231,6 @@ class TransactionFormState extends Equatable {
     errors,
     loadStatus,
     saveStatus,
-    uploadStatus,
     outcome,
   ];
 }

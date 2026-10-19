@@ -5,10 +5,11 @@ import 'package:injectable/injectable.dart';
 
 /// Whether the device has a network interface up.
 ///
-/// Drives the offline banner and gates financial callables, which are refused
-/// offline rather than queued (`docs/ARCHITECTURE.md` §2, Offline behaviour).
-/// An interface being up does not prove the backend is reachable; a callable
-/// that still fails comes back as `AppErrorKind.offline` from the server path.
+/// The device half of `CloudAvailability` (the other half is the Cloud sync
+/// switch), which gates callables and decides whether money
+/// actions are queued (`docs/ARCHITECTURE.md` §2, Offline behaviour). An
+/// interface being up does not prove the backend is reachable; a call that
+/// still fails comes back as `AppErrorKind.offline` and is queued then.
 @lazySingleton
 class ConnectivityService {
   ConnectivityService(this._connectivity) {

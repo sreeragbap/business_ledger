@@ -7,6 +7,7 @@ import 'package:business_ledger/app/flavor.dart';
 import 'package:business_ledger/core/di/injection.dart';
 import 'package:business_ledger/core/firebase/crashlytics_service.dart';
 import 'package:business_ledger/core/firebase/firebase_setup.dart';
+import 'package:business_ledger/core/sync/sync_settings.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 
@@ -19,7 +20,9 @@ import 'package:flutter/material.dart';
 ///   4. SDK settings (offline persistence, emulators), before any instance
 ///      is used — Firestore refuses settings after its first call.
 ///   5. DI, so services exist.
-///   6. `runApp`.
+///   6. The stored Cloud sync switch, so a device set to "off" never talks
+///      to Firestore, not even for the first screen.
+///   7. `runApp`.
 Future<void> bootstrap(Flavor flavor) async {
   await runZonedGuarded(
     () async {
@@ -56,6 +59,7 @@ Future<void> bootstrap(Flavor flavor) async {
 
       await FirebaseSetup.configure();
       await configureDependencies();
+      await getIt<SyncSettings>().apply();
 
       runApp(const App());
     },

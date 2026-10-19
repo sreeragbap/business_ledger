@@ -1,18 +1,16 @@
 import 'dart:async';
 
 import 'package:business_ledger/core/theme/app_colors.dart';
-import 'package:business_ledger/core/theme/app_spacing.dart';
 import 'package:business_ledger/core/widgets/app_error_state.dart';
 import 'package:business_ledger/core/widgets/app_loader.dart';
 import 'package:business_ledger/core/widgets/app_snack_bar.dart';
 import 'package:business_ledger/features/documents/logic/document_cubit/document_cubit.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:printing/printing.dart';
 
-/// Previews the document held by [DocumentCubit], with share, print/save and
-/// upload actions.
+/// Previews the document held by [DocumentCubit], with share and print/save
+/// actions. The PDF is rendered on the device; nothing is stored.
 ///
 /// Takes its cubit from the tree. Open it after `open`/`issue`/`openById` has
 /// been called on the cubit:
@@ -31,14 +29,9 @@ class DocumentPreviewScreen extends StatelessWidget {
     return BlocListener<DocumentCubit, DocumentState>(
       listenWhen: (previous, current) =>
           previous.shareStatus != current.shareStatus ||
-          previous.printStatus != current.printStatus ||
-          previous.uploadStatus != current.uploadStatus,
+          previous.printStatus != current.printStatus,
       listener: (context, state) {
-        for (final status in [
-          state.shareStatus,
-          state.printStatus,
-          state.uploadStatus,
-        ]) {
+        for (final status in [state.shareStatus, state.printStatus]) {
           if (status.isFailure && !(status.error?.isCancelled ?? false)) {
             showAppSnackBar(
               context,
@@ -74,7 +67,6 @@ class DocumentPreviewScreen extends StatelessWidget {
                 ],
               ),
               actions: [
-                _UploadButton(state: state),
                 IconButton(
                   tooltip: 'Print or save as PDF',
                   icon: const Icon(Icons.print_outlined),
@@ -97,33 +89,6 @@ class DocumentPreviewScreen extends StatelessWidget {
           );
         },
       ),
-    );
-  }
-}
-
-class _UploadButton extends StatelessWidget {
-  const _UploadButton({required this.state});
-
-  final DocumentState state;
-
-  @override
-  Widget build(BuildContext context) {
-    if (state.uploadStatus.isLoading) {
-      return Padding(
-        padding: EdgeInsets.symmetric(horizontal: AppSpacing.md.w),
-        child: AppLoader(size: 20.r, center: false),
-      );
-    }
-    final uploaded = state.document?.isUploaded ?? false;
-    return IconButton(
-      tooltip: uploaded ? 'Saved online' : 'Save a copy online',
-      icon: Icon(
-        uploaded ? Icons.cloud_done_outlined : Icons.cloud_upload_outlined,
-        color: uploaded ? AppColors.income : null,
-      ),
-      onPressed: state.hasPdf && !uploaded && !state.isBusy
-          ? () => unawaited(context.read<DocumentCubit>().upload())
-          : null,
     );
   }
 }

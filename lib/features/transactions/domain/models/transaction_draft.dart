@@ -13,7 +13,7 @@ import 'package:equatable/equatable.dart';
 /// (FUNCTIONS_API "Draft shape"): `status: 'draft'`, a creatable `type`,
 /// `createdBy`, no money the functions maintain (`paidMinor`…), no
 /// `confirmed*` / `cancelled*` / link fields, `totalMinor` an int within
-/// `0..1e13`, `description` ≤ 200, ≤ 200 lines and ≤ 20 attachments.
+/// `0..1e13`, `description` ≤ 200 and ≤ 200 lines.
 ///
 /// Name snapshots (`categoryName`, `partyName`, `projectName`) are written
 /// too: the rules allow them, the list can show a draft's category without a
@@ -40,7 +40,6 @@ class TransactionDraft extends Equatable {
     this.lineItems = const [],
     this.totalMinor,
     this.customFields = const {},
-    this.attachments = const [],
   });
 
   /// A new, empty draft of [type] dated [date].
@@ -80,14 +79,12 @@ class TransactionDraft extends Equatable {
     lineItems: tx.lineItems,
     totalMinor: tx.lineItems.isEmpty ? tx.totalMinor : null,
     customFields: tx.customFields,
-    attachments: tx.attachments,
   );
 
   static const int maxDescriptionLength = 200;
   static const int maxReferenceLength = 80;
   static const int maxNotesLength = 2000;
   static const int maxLineItems = 200;
-  static const int maxAttachments = 20;
 
   final String id;
   final TransactionType type;
@@ -116,7 +113,6 @@ class TransactionDraft extends Equatable {
   /// The directly entered amount (when not itemised). `null` while empty.
   final int? totalMinor;
   final Map<String, dynamic> customFields;
-  final List<String> attachments;
 
   Direction? get resolvedDirection => type.fixedDirection ?? direction;
 
@@ -178,7 +174,6 @@ class TransactionDraft extends Equatable {
         : const <Map<String, Object>>[],
     'totalMinor': total,
     'customFields': cleanedCustomFields,
-    'attachments': attachments,
     'searchTokens': searchTokens,
     'updatedAt': now,
     if (isNew) ...{'createdBy': uid, 'createdAt': now, 'version': 0},
@@ -210,12 +205,11 @@ class TransactionDraft extends Equatable {
     }
     if (total != original.totalMinor) changes['totalMinor'] = total;
     put('customFields', cleanedCustomFields, original.customFields);
-    put('attachments', attachments, original.attachments);
     return changes;
   }
 
   /// A copy as a new draft: same type, amounts, party and category, dated
-  /// [date]. Attachments stay with the original; a due date that would fall
+  /// [date]. A due date that would fall
   /// before the new date is dropped.
   TransactionDraft duplicateAs({required String id, required String date}) =>
       TransactionDraft(
@@ -263,7 +257,6 @@ class TransactionDraft extends Equatable {
     List<LineItem>? lineItems,
     int? Function()? totalMinor,
     Map<String, dynamic>? customFields,
-    List<String>? attachments,
   }) => TransactionDraft(
     id: id,
     type: type ?? this.type,
@@ -284,7 +277,6 @@ class TransactionDraft extends Equatable {
     lineItems: lineItems ?? this.lineItems,
     totalMinor: totalMinor == null ? this.totalMinor : totalMinor(),
     customFields: customFields ?? this.customFields,
-    attachments: attachments ?? this.attachments,
   );
 
   @override
@@ -308,6 +300,5 @@ class TransactionDraft extends Equatable {
     lineItems,
     totalMinor,
     customFields,
-    attachments,
   ];
 }

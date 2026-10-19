@@ -1,5 +1,3 @@
-import 'dart:typed_data';
-
 import 'package:business_ledger/core/firebase/firestore_read.dart';
 import 'package:business_ledger/core/ledger/ledger_enums.dart';
 import 'package:equatable/equatable.dart';
@@ -112,54 +110,4 @@ class SettlementResult extends Equatable {
 PaymentStatus? _status(Map<String, dynamic> map) {
   final key = map.readOptionalString('paymentStatus');
   return key == null ? null : PaymentStatus.fromKey(key);
-}
-
-/// A file the user picked to attach: an image or a PDF up to 10 MB
-/// (`storage.rules`).
-class PickedAttachment extends Equatable {
-  const PickedAttachment({
-    required this.name,
-    required this.bytes,
-    required this.contentType,
-  });
-
-  static const int maxBytes = 10 * 1024 * 1024;
-  static const int maxCount = 20;
-
-  final String name;
-  final Uint8List bytes;
-  final String contentType;
-
-  bool get isImage => contentType.startsWith('image/');
-  bool get isPdf => contentType == 'application/pdf';
-  bool get isAllowedType => isImage || isPdf;
-  bool get isTooLarge => bytes.length > maxBytes;
-
-  /// The content type for a file name, from its extension.
-  static String contentTypeFor(String name) {
-    final ext = name.contains('.') ? name.split('.').last.toLowerCase() : '';
-    return switch (ext) {
-      'jpg' || 'jpeg' => 'image/jpeg',
-      'png' => 'image/png',
-      'heic' => 'image/heic',
-      'heif' => 'image/heif',
-      'webp' => 'image/webp',
-      'gif' => 'image/gif',
-      'pdf' => 'application/pdf',
-      _ => 'application/octet-stream',
-    };
-  }
-
-  /// The display name of a stored attachment path.
-  static String displayName(String path) {
-    final file = path.split('/').last;
-    // Uploads are prefixed with a timestamp to keep names unique.
-    final match = RegExp(r'^\d+_(.+)$').firstMatch(file);
-    return match?.group(1) ?? file;
-  }
-
-  static bool pathIsPdf(String path) => path.toLowerCase().endsWith('.pdf');
-
-  @override
-  List<Object?> get props => [name, bytes.length, contentType];
 }

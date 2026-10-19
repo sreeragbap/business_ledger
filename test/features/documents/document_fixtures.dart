@@ -64,7 +64,6 @@ Map<String, dynamic> invoiceMap({
   'issuedAt': Timestamp.fromDate(DateTime.utc(2026, 10, 2, 9)),
   'issuedBy': 'u1',
   'voided': voided,
-  'storagePath': null,
 };
 
 /// A purchase bill with no line items and no party.

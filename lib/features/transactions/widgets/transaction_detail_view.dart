@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:business_ledger/core/ledger/ledger_enums.dart';
 import 'package:business_ledger/core/money/currency.dart';
+import 'package:business_ledger/core/sync/outbox_entry.dart';
 import 'package:business_ledger/core/theme/app_colors.dart';
 import 'package:business_ledger/core/theme/app_motion.dart';
 import 'package:business_ledger/core/theme/app_radius.dart';
@@ -15,6 +16,7 @@ import 'package:business_ledger/core/widgets/app_fade_in.dart';
 import 'package:business_ledger/core/widgets/app_section.dart';
 import 'package:business_ledger/core/widgets/app_shimmer.dart';
 import 'package:business_ledger/core/widgets/app_snack_bar.dart';
+import 'package:business_ledger/core/widgets/pending_sync_badge.dart';
 import 'package:business_ledger/features/categories/domain/models/custom_field.dart';
 import 'package:business_ledger/features/transactions/domain/models/ledger_dates.dart';
 import 'package:business_ledger/features/transactions/domain/models/ledger_transaction.dart';
@@ -38,8 +40,8 @@ class TransactionDetailView extends StatelessWidget {
     required this.onOpenTransaction,
     required this.onRecordSettlement,
     required this.onDocuments,
-    required this.onOpenAttachment,
     required this.onDuplicated,
+    this.onOpenSync,
     super.key,
   });
 
@@ -50,10 +52,12 @@ class TransactionDetailView extends StatelessWidget {
   final ValueChanged<String> onOpenTransaction;
   final ValueChanged<SettlementKind> onRecordSettlement;
   final ValueChanged<LedgerTransaction> onDocuments;
-  final ValueChanged<String> onOpenAttachment;
 
   /// A copy was saved as a new draft: open it.
   final ValueChanged<String> onDuplicated;
+
+  /// The Sync screen, to review a queued action the server refused.
+  final VoidCallback? onOpenSync;
 
   @override
   Widget build(BuildContext context) {
@@ -83,7 +87,7 @@ class TransactionDetailView extends StatelessWidget {
                       state: state,
                       currency: currency,
                       onOpenTransaction: onOpenTransaction,
-                      onOpenAttachment: onOpenAttachment,
+                      onOpenSync: onOpenSync,
                     )
                   : state.loadStatus.isFailure
                   ? AppErrorState(
@@ -113,6 +117,10 @@ class TransactionDetailView extends StatelessWidget {
       return;
     }
     if (!status.isSuccess) return;
+    if (state.actionQueued) {
+      showAppSnackBar(context, status.message, kind: AppSnackBarKind.success);
+      return;
+    }
     switch (state.action) {
       case DetailAction.confirm || DetailAction.confirmPaid:
         showSuccessCheck(context, label: status.message);
@@ -138,7 +146,9 @@ class TransactionDetailView extends StatelessWidget {
         (tx.type.documentType != null ||
             state.settlements.any((s) => s.kind == SettlementKind.payment));
     final items = <PopupMenuEntry<VoidCallback>>[
-      if (tx.isConfirmed && state.role.canDoFinancial && tx.isSettleable) ...[
+      if ((tx.isConfirmed || (tx.isDraft && state.confirmQueued)) &&
+          state.role.canDoFinancial &&
+          tx.isSettleable) ...[
         for (final kind in SettlementKind.values)
           PopupMenuItem(
             value: () => onRecordSettlement(kind),
@@ -213,18 +223,25 @@ class TransactionDetailView extends StatelessWidget {
     bool settleNow = false,
   }) async {
     final cubit = context.read<TransactionDetailCubit>();
+    final queued = !cubit.state.online;
+    final message = settleNow
+        ? 'It will count in your reports, and the full amount is recorded '
+              'as paid today.'
+        : 'It will count in your reports. After this it can be edited or '
+              'cancelled, but not turned back into a draft.';
     final ok = await showAppConfirmDialog(
       context: context,
       title: settleNow ? 'Confirm as paid?' : 'Confirm this transaction?',
-      message: settleNow
-          ? 'It will count in your reports, and the full amount is recorded '
-                'as paid today.'
-          : 'It will count in your reports. After this it can be edited or '
-                'cancelled, but not turned back into a draft.',
+      message: queued ? '$message\n\n$queuedConfirmNote' : message,
       confirmLabel: settleNow ? 'Confirm & pay' : 'Confirm',
     );
     if (ok) await cubit.confirm(settleNow: settleNow);
   }
+
+  static const String queuedConfirmNote =
+      'Not syncing right now: the confirm is kept on this device and '
+      'applied when synced. It may be refused if something changed '
+      'meanwhile.';
 
   static Future<void> _cancel(
     BuildContext context,
@@ -236,7 +253,10 @@ class TransactionDetailView extends StatelessWidget {
       await cubit.cancel();
       return;
     }
-    final reason = await showCancelTransactionDialog(context);
+    final reason = await showCancelTransactionDialog(
+      context,
+      queued: !state.online,
+    );
     if (reason != null) await cubit.cancel(reason: reason);
   }
 
@@ -286,14 +306,14 @@ class _Content extends StatelessWidget {
     required this.state,
     required this.currency,
     required this.onOpenTransaction,
-    required this.onOpenAttachment,
+    this.onOpenSync,
     super.key,
   });
 
   final TransactionDetailState state;
   final Currency currency;
   final ValueChanged<String> onOpenTransaction;
-  final ValueChanged<String> onOpenAttachment;
+  final VoidCallback? onOpenSync;
 
   @override
   Widget build(BuildContext context) {
@@ -308,7 +328,12 @@ class _Content extends StatelessWidget {
         AppSpacing.huge.h,
       ),
       children: [
-        _Header(transaction: tx, today: state.today, currency: currency),
+        _Header(
+          transaction: tx,
+          today: state.today,
+          currency: currency,
+          syncMark: state.syncMark,
+        ),
         ..._banners(context, tx),
         gap,
         AppFadeIn(
@@ -317,6 +342,20 @@ class _Content extends StatelessWidget {
             children: [
               const AppSectionLabel('Balance'),
               BalanceBreakdown(transaction: tx, currency: currency),
+              AnimatedSize(
+                duration: AppMotion.medium,
+                curve: AppMotion.standard,
+                alignment: Alignment.topCenter,
+                child: state.hasQueued
+                    ? Padding(
+                        padding: EdgeInsets.only(top: AppSpacing.md.h),
+                        child: QueuedActionsCard(
+                          entries: state.queued,
+                          onReview: onOpenSync,
+                        ),
+                      )
+                    : const SizedBox(width: double.infinity),
+              ),
             ],
           ),
         ),
@@ -334,11 +373,6 @@ class _Content extends StatelessWidget {
               children: details,
             ),
           ),
-        ],
-        if (tx.attachments.isNotEmpty) ...[
-          gap,
-          AppSectionLabel('Attachments · ${tx.attachments.length}'),
-          AttachmentChips(paths: tx.attachments, onOpen: onOpenAttachment),
         ],
         if (state.settlements.isNotEmpty) ...[
           SizedBox(height: AppSpacing.md.h),
@@ -505,11 +539,13 @@ class _Header extends StatelessWidget {
     required this.transaction,
     required this.today,
     required this.currency,
+    required this.syncMark,
   });
 
   final LedgerTransaction transaction;
   final String today;
   final Currency currency;
+  final SyncMark syncMark;
 
   @override
   Widget build(BuildContext context) {
@@ -569,6 +605,7 @@ class _Header extends StatelessWidget {
                   : '${tx.type.label} · money '
                         '${tx.isInflow ? 'in' : 'out'}',
             ),
+            if (syncMark != SyncMark.none) PendingSyncBadge(mark: syncMark),
           ],
         ),
       ],
@@ -664,7 +701,7 @@ class _ActionBar extends StatelessWidget {
       }
     } else if (tx.isCancelled) {
       note = 'Cancelled transactions are read-only.';
-    } else if (tx.isDraft) {
+    } else if (tx.isDraft && !state.confirmQueued) {
       if (state.can(DetailAction.edit)) {
         buttons.add(
           AppButton.secondary(
@@ -720,16 +757,21 @@ class _ActionBar extends StatelessWidget {
             onPressed: busy ? null : () => onRecord(kind),
           ),
         );
-      } else if (state.role.canDoFinancial && tx.isSettleable) {
-        note = state.online
-            ? null
-            : "You're offline. Recording money needs a connection.";
       }
       if (!state.role.canDoFinancial) {
         note = state.role.canEditConfig
             ? 'Only admins and owners change confirmed transactions.'
             : null;
       }
+    }
+
+    if (!state.online &&
+        state.role.canDoFinancial &&
+        !tx.isCancelled &&
+        !tx.isRefundEntry) {
+      note ??=
+          'Not syncing right now: money actions are kept on this device and '
+          'applied when synced.';
     }
 
     if (buttons.isEmpty && note == null) {
@@ -780,6 +822,85 @@ class _ActionBar extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// The actions on this transaction still waiting in the outbox, under the
+/// balance. The balance above is the server's; these are not in it yet.
+class QueuedActionsCard extends StatelessWidget {
+  const QueuedActionsCard({required this.entries, this.onReview, super.key});
+
+  final List<OutboxEntry> entries;
+  final VoidCallback? onReview;
+
+  static String statusOf(OutboxEntry entry) => switch (entry.status) {
+    OutboxStatus.pending => 'waiting to sync',
+    OutboxStatus.syncing => 'syncing…',
+    OutboxStatus.failed =>
+      "couldn't be applied: ${entry.lastError?.message ?? 'refused'}",
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    final anyFailed = entries.any((entry) => entry.isFailed);
+    return AppCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Icon(
+                Icons.cloud_upload_outlined,
+                size: 18.r,
+                color: AppColors.warning,
+              ),
+              SizedBox(width: AppSpacing.sm.w),
+              Expanded(
+                child: Text('Pending sync', style: textTheme.titleSmall),
+              ),
+              if (anyFailed && onReview != null)
+                TextButton(onPressed: onReview, child: const Text('Review')),
+            ],
+          ),
+          SizedBox(height: AppSpacing.xs.h),
+          Text(
+            'Not in the balance above until the server applies them.',
+            style: textTheme.bodySmall,
+          ),
+          for (final entry in entries)
+            Padding(
+              padding: EdgeInsets.only(top: AppSpacing.sm.h),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Padding(
+                    padding: EdgeInsets.only(top: 2.h),
+                    child: Icon(
+                      entry.isFailed
+                          ? Icons.error_outline_rounded
+                          : Icons.schedule_rounded,
+                      size: 16.r,
+                      color: entry.isFailed
+                          ? AppColors.error
+                          : AppColors.textTertiary,
+                    ),
+                  ),
+                  SizedBox(width: AppSpacing.sm.w),
+                  Expanded(
+                    child: Text(
+                      '${entry.label} — ${statusOf(entry)}',
+                      style: textTheme.bodyMedium?.copyWith(
+                        color: entry.isFailed ? AppColors.error : null,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+        ],
       ),
     );
   }

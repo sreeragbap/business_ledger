@@ -9,7 +9,7 @@
     "build": "tsc",
     "lint": "tsc --noEmit",
     "test": "vitest run test/unit",
-    "test:emulator": "firebase emulators:exec --only firestore,auth,storage --project demo-business-ledger 'vitest run --config vitest.emulator.config.mts'",
+    "test:emulator": "firebase emulators:exec --only firestore,auth --project demo-business-ledger 'vitest run --config vitest.emulator.config.mts'",
     "serve": "npm run build && firebase emulators:start --project demo-business-ledger"
   },
   "dependencies": {

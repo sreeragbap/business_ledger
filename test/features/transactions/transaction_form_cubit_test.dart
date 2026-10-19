@@ -1,5 +1,3 @@
-import 'dart:typed_data';
-
 import 'package:business_ledger/core/domain/app_exception.dart';
 import 'package:business_ledger/core/domain/app_result.dart';
 import 'package:business_ledger/core/ledger/ledger_enums.dart';
@@ -207,7 +205,7 @@ void main() {
   });
 
   group('confirm availability', () {
-    test('editors save drafts; only admins online confirm', () async {
+    test('editors save drafts; admins confirm, offline too (queued)', () async {
       final editor = await start(role: Role.editor);
       expect(editor.state.canSaveDraft, isTrue);
       expect(editor.state.canConfirm, isFalse);
@@ -220,10 +218,10 @@ void main() {
       connectivity.setOnline(online: false);
       await flush();
       expect(admin.state.online, isFalse);
-      expect(admin.state.canConfirm, isFalse);
-      expect(admin.state.canSettleNow, isFalse);
-      expect(admin.state.confirmBlockedReason, contains('offline'));
-      expect(admin.state.attachBlockedReason, contains('offline'));
+      expect(admin.state.canConfirm, isTrue);
+      expect(admin.state.canSettleNow, isTrue);
+      expect(admin.state.confirmBlockedReason, isNull);
+      expect(admin.state.queueNote, contains('applied when synced'));
       await admin.close();
     });
 
@@ -303,6 +301,44 @@ void main() {
       },
     );
 
+    test(
+      'offline: the draft is saved on the device and the confirm queued',
+      () async {
+        connectivity.isOnline = false;
+        repository.queueActions = true;
+        final cubit = await start()
+          ..setCategory(rentCategory)
+          ..setDescription('Office rent')
+          ..setTotal(2500);
+        await cubit.saveAndConfirm();
+        expect(repository.awaitedServer.single, isFalse, reason: 'local');
+        final call = repository.calls.single;
+        expect(call.name, 'confirm');
+        expect(call.label, 'Confirm ₹25.00 · Office rent');
+        expect(cubit.state.outcome, TransactionFormOutcome.queued);
+        expect(cubit.state.saveStatus.message, contains('when synced'));
+        await cubit.close();
+      },
+    );
+
+    test(
+      'a save that loses the connection keeps the draft locally and goes on',
+      () async {
+        repository.writeResults.addAll([
+          const Failure(AppException.offline()),
+          const Success(null),
+        ]);
+        repository.queueActions = true;
+        final cubit = await start()
+          ..setCategory(rentCategory)
+          ..setTotal(2500);
+        await cubit.saveAndConfirm();
+        expect(repository.awaitedServer, [isTrue, isFalse]);
+        expect(cubit.state.outcome, TransactionFormOutcome.queued);
+        await cubit.close();
+      },
+    );
+
     test('a definitive refusal starts a new request next time', () async {
       repository.confirmResults.add(
         const Failure(
@@ -349,6 +385,26 @@ void main() {
         'customFields': {'f-site': 'Plot 4'},
       });
       expect(cubit.state.outcome, TransactionFormOutcome.edited);
+      await cubit.close();
+    });
+
+    test('offline the edit is queued against the loaded version', () async {
+      repository
+        ..emitTransaction(confirmedSale(version: 7))
+        ..queueActions = true;
+      connectivity.isOnline = false;
+      final cubit = await start(transactionId: 't1');
+      expect(cubit.state.editBlockedReason, isNull);
+      expect(cubit.state.queueNote, contains('applied when synced'));
+      cubit
+        ..setCustomField('f-site', 'Plot 4')
+        ..setDescription('Cement bags (50)');
+      await cubit.saveConfirmedChanges();
+      final call = repository.calls.single;
+      expect(call.data['expectedVersion'], 7);
+      expect(call.label, startsWith('Edit · '));
+      expect(cubit.state.outcome, TransactionFormOutcome.edited);
+      expect(cubit.state.saveStatus.message, contains('when synced'));
       await cubit.close();
     });
 
@@ -399,40 +455,6 @@ void main() {
       final cubit = await start(transactionId: 't1');
       expect(cubit.state.loadStatus.isFailure, isTrue);
       expect(cubit.state.draft, isNull);
-      await cubit.close();
-    });
-  });
-
-  group('attachments', () {
-    PickedAttachment file({int size = 10, String type = 'application/pdf'}) =>
-        PickedAttachment(
-          name: 'bill.pdf',
-          bytes: Uint8List(size),
-          contentType: type,
-        );
-
-    test('uploads and keeps the path', () async {
-      final cubit = await start();
-      await cubit.addAttachment(file());
-      expect(cubit.state.draft!.attachments, [
-        'businesses/b1/attachments/t1/1_bill.pdf',
-      ]);
-      cubit.removeAttachment('businesses/b1/attachments/t1/1_bill.pdf');
-      expect(cubit.state.draft!.attachments, isEmpty);
-      await cubit.close();
-    });
-
-    test('refuses offline, oversized and other types up front', () async {
-      final cubit = await start();
-      await cubit.addAttachment(file(type: 'text/plain'));
-      expect(cubit.state.uploadStatus.message, contains('images and PDFs'));
-      await cubit.addAttachment(file(size: PickedAttachment.maxBytes + 1));
-      expect(cubit.state.uploadStatus.message, contains('10 MB'));
-      connectivity.setOnline(online: false);
-      await flush();
-      await cubit.addAttachment(file());
-      expect(cubit.state.uploadStatus.message, contains('offline'));
-      expect(repository.uploads, 0);
       await cubit.close();
     });
   });

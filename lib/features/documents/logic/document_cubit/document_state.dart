@@ -11,7 +11,6 @@ class DocumentState extends Equatable {
     this.renderStatus = const Status.initial(),
     this.shareStatus = const Status.initial(),
     this.printStatus = const Status.initial(),
-    this.uploadStatus = const Status.initial(),
   });
 
   final String? businessId;
@@ -30,7 +29,6 @@ class DocumentState extends Equatable {
   final Status renderStatus;
   final Status shareStatus;
   final Status printStatus;
-  final Status uploadStatus;
 
   bool get hasPdf => pdf != null;
 
@@ -39,8 +37,7 @@ class DocumentState extends Equatable {
       issueStatus.isLoading ||
       renderStatus.isLoading ||
       shareStatus.isLoading ||
-      printStatus.isLoading ||
-      uploadStatus.isLoading;
+      printStatus.isLoading;
 
   DocumentState copyWith({
     String? businessId,
@@ -53,7 +50,6 @@ class DocumentState extends Equatable {
     Status? renderStatus,
     Status? shareStatus,
     Status? printStatus,
-    Status? uploadStatus,
   }) => DocumentState(
     businessId: businessId ?? this.businessId,
     documents: documents ?? this.documents,
@@ -64,7 +60,6 @@ class DocumentState extends Equatable {
     renderStatus: renderStatus ?? this.renderStatus,
     shareStatus: shareStatus ?? this.shareStatus,
     printStatus: printStatus ?? this.printStatus,
-    uploadStatus: uploadStatus ?? this.uploadStatus,
   );
 
   @override
@@ -80,6 +75,5 @@ class DocumentState extends Equatable {
     renderStatus,
     shareStatus,
     printStatus,
-    uploadStatus,
   ];
 }

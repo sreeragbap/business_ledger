@@ -4,6 +4,7 @@ import 'package:business_ledger/core/ledger/ledger_enums.dart';
 import 'package:business_ledger/core/ledger/ledger_math.dart';
 import 'package:business_ledger/core/money/currency.dart';
 import 'package:business_ledger/core/money/money.dart';
+import 'package:business_ledger/core/sync/action_outcome.dart';
 import 'package:business_ledger/core/theme/app_colors.dart';
 import 'package:business_ledger/core/theme/app_motion.dart';
 import 'package:business_ledger/core/theme/app_radius.dart';
@@ -24,17 +25,19 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 
 /// Opens the settlement sheet over [cubit] (already started). Resolves the
-/// server's result once recorded, `null` when dismissed.
-Future<SettlementResult?> showSettlementSheet({
+/// outcome once recorded (applied, or queued when [online] is false),
+/// `null` when dismissed.
+Future<ActionOutcome<SettlementResult>?> showSettlementSheet({
   required BuildContext context,
   required SettlementFormCubit cubit,
   required Currency currency,
-}) => showAppBottomSheet<SettlementResult>(
+  bool online = true,
+}) => showAppBottomSheet<ActionOutcome<SettlementResult>>(
   context: context,
   title: 'Record money',
   child: BlocProvider.value(
     value: cubit,
-    child: SettlementSheet(currency: currency),
+    child: SettlementSheet(currency: currency, online: online),
   ),
 );
 
@@ -42,9 +45,20 @@ Future<SettlementResult?> showSettlementSheet({
 /// note, and a live preview of the balance afterwards. Kinds that cannot
 /// apply are disabled with the reason.
 class SettlementSheet extends StatefulWidget {
-  const SettlementSheet({required this.currency, super.key});
+  const SettlementSheet({
+    required this.currency,
+    this.online = true,
+    super.key,
+  });
 
   final Currency currency;
+
+  /// The cloud is reachable. When not, the settlement is queued.
+  final bool online;
+
+  static const String queuedNote =
+      'Not syncing right now: this is kept on this device and recorded when '
+      'synced. It may be refused if the balance changed meanwhile.';
 
   static String describe(SettlementKind kind, LedgerTransaction tx) =>
       switch (kind) {
@@ -75,7 +89,7 @@ class _SettlementSheetState extends State<SettlementSheet> {
     return BlocConsumer<SettlementFormCubit, SettlementFormState>(
       listenWhen: (p, c) =>
           p.submitStatus != c.submitStatus && c.submitStatus.isSuccess,
-      listener: (context, state) => Navigator.of(context).pop(state.result),
+      listener: (context, state) => Navigator.of(context).pop(state.outcome),
       builder: (context, state) {
         final tx = state.transaction;
         if (tx == null) return const SizedBox.shrink();
@@ -215,6 +229,7 @@ class _SettlementSheetState extends State<SettlementSheet> {
                       status: state.previewStatus,
                       currency: currency,
                       inflow: tx.isInflow,
+                      includesPending: state.previewIncludesPending,
                     ),
             ),
             if (state.submitStatus.isFailure &&
@@ -224,6 +239,26 @@ class _SettlementSheetState extends State<SettlementSheet> {
               Text(
                 state.submitStatus.message,
                 style: textTheme.bodySmall?.copyWith(color: AppColors.error),
+              ),
+            ],
+            if (!widget.online) ...[
+              SizedBox(height: AppSpacing.md.h),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(
+                    Icons.cloud_off_rounded,
+                    size: 16.r,
+                    color: AppColors.warning,
+                  ),
+                  SizedBox(width: AppSpacing.sm.w),
+                  Expanded(
+                    child: Text(
+                      SettlementSheet.queuedNote,
+                      style: textTheme.bodySmall,
+                    ),
+                  ),
+                ],
               ),
             ],
             SizedBox(height: AppSpacing.lg.h),
@@ -255,7 +290,14 @@ class _Preview extends StatelessWidget {
     required this.status,
     required this.currency,
     required this.inflow,
+    this.includesPending = false,
   });
+
+  /// [after] also counts settlements still waiting to sync; [before] is the
+  /// server's balance.
+  final bool includesPending;
+
+  static const String pendingTitle = 'After this and pending actions';
 
   final Balance before;
   final Balance after;
@@ -295,7 +337,12 @@ class _Preview extends StatelessWidget {
         children: [
           Row(
             children: [
-              Expanded(child: Text('After this', style: textTheme.labelMedium)),
+              Expanded(
+                child: Text(
+                  includesPending ? pendingTitle : 'After this',
+                  style: textTheme.labelMedium,
+                ),
+              ),
               if (status != null) AppStatusChip.payment(status!),
             ],
           ),

@@ -1,14 +1,17 @@
 import 'dart:async';
-import 'dart:typed_data';
 
 import 'package:business_ledger/core/domain/app_exception.dart';
 import 'package:business_ledger/core/domain/app_result.dart';
 import 'package:business_ledger/core/firebase/callable_client.dart';
-import 'package:business_ledger/core/firebase/connectivity_service.dart';
 import 'package:business_ledger/core/firebase/firestore_refs.dart';
 import 'package:business_ledger/core/firebase/firestore_streams.dart';
 import 'package:business_ledger/core/firebase/local_first_writer.dart';
 import 'package:business_ledger/core/ledger/ledger_enums.dart';
+import 'package:business_ledger/core/sync/action_outcome.dart';
+import 'package:business_ledger/core/sync/cloud_availability.dart';
+import 'package:business_ledger/core/sync/outbox_entry.dart';
+import 'package:business_ledger/core/sync/sync_engine.dart';
+import 'package:business_ledger/core/sync/sync_queue.dart';
 import 'package:business_ledger/features/transactions/domain/models/audit_entry.dart';
 import 'package:business_ledger/features/transactions/domain/models/ledger_dates.dart';
 import 'package:business_ledger/features/transactions/domain/models/ledger_transaction.dart';
@@ -20,35 +23,25 @@ import 'package:business_ledger/features/transactions/domain/models/transaction_
 import 'package:business_ledger/features/transactions/domain/repository/transaction_repository.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:firebase_storage/firebase_storage.dart';
 import 'package:injectable/injectable.dart';
 
 @LazySingleton(as: TransactionRepository)
 class TransactionService implements TransactionRepository {
   TransactionService(
     this._refs,
-    this._callable,
     this._writer,
     this._auth,
-    this._storage,
-    this._connectivity,
+    this._availability,
+    this._queue,
+    this._engine,
   );
 
   final FirestoreRefs _refs;
-  final CallableClient _callable;
   final LocalFirstWriter _writer;
   final FirebaseAuth _auth;
-  final FirebaseStorage _storage;
-  final ConnectivityService _connectivity;
-
-  /// `businesses/{bid}/attachments/{tid}/{file}`, as `storage.rules` expects.
-  static String attachmentPath(
-    String businessId,
-    String transactionId,
-    String fileName,
-  ) =>
-      '${FirestoreRefs.storagePrefix(businessId)}/attachments/'
-      '$transactionId/$fileName';
+  final CloudAvailability _availability;
+  final SyncQueue _queue;
+  final SyncEngine _engine;
 
   @override
   String newTransactionId(String businessId) =>
@@ -171,8 +164,8 @@ class TransactionService implements TransactionRepository {
     required bool awaitServer,
   }) async {
     if (!awaitServer) return _writer.commit(write);
-    if (!await _connectivity.refresh()) {
-      return const Failure(AppException.offline());
+    if (!await _availability.refresh()) {
+      return Failure(_availability.unavailableError);
     }
     return AppResult.guard(() => write().timeout(CallableClient.timeout));
   }
@@ -234,8 +227,30 @@ class TransactionService implements TransactionRepository {
     return result.map((_) => id);
   }
 
+  /// Parses an applied result; a queued one has nothing to parse yet.
+  static AppResult<ActionOutcome<T>> _outcome<T>(
+    AppResult<ActionOutcome<Map<String, dynamic>>> result,
+    T Function(Map<String, dynamic> map) parse,
+  ) {
+    switch (result) {
+      case Failure(:final error):
+        return Failure(error);
+      case Success(data: Queued(:final entry)):
+        return Success(Queued(entry));
+      case Success(data: Applied(result: final map)):
+        try {
+          return Success(Applied(parse(map)));
+        } catch (error) {
+          return Failure(AppException.from(error));
+        }
+    }
+  }
+
+  static String _labelOr(String label, String fallback) =>
+      label.trim().isEmpty ? fallback : label.trim();
+
   @override
-  Future<AppResult<ConfirmResult>> confirm(
+  Future<AppResult<ActionOutcome<ConfirmResult>>> confirm(
     String businessId,
     String transactionId, {
     required String requestId,
@@ -243,59 +258,87 @@ class TransactionService implements TransactionRepository {
     bool settleNow = false,
     String? settleDate,
     String? settleMethod,
+    String label = '',
   }) async {
-    final result = await _callable.call('confirmTransaction', {
-      'businessId': businessId,
-      'transactionId': transactionId,
-      'requestId': requestId,
-      'expectedVersion': ?expectedVersion,
-      if (settleNow) 'settleNow': true,
-      if (settleNow) 'settleDate': ?settleDate,
-      if (settleNow && (settleMethod?.trim().isNotEmpty ?? false))
-        'settleMethod': settleMethod!.trim(),
-    });
-    return result.map(ConfirmResult.fromMap);
+    final result = await _queue.run(
+      QueueableCall(
+        kind: OutboxKind.confirm,
+        businessId: businessId,
+        transactionId: transactionId,
+        label: _labelOr(label, settleNow ? 'Confirm as paid' : 'Confirm'),
+        payload: {
+          'businessId': businessId,
+          'transactionId': transactionId,
+          'requestId': requestId,
+          'expectedVersion': ?expectedVersion,
+          if (settleNow) 'settleNow': true,
+          if (settleNow) 'settleDate': ?settleDate,
+          if (settleNow && (settleMethod?.trim().isNotEmpty ?? false))
+            'settleMethod': settleMethod!.trim(),
+        },
+      ),
+    );
+    return _outcome(result, ConfirmResult.fromMap);
   }
 
   @override
-  Future<AppResult<MutationResult>> editConfirmed(
+  Future<AppResult<ActionOutcome<MutationResult>>> editConfirmed(
     String businessId,
     String transactionId, {
     required String requestId,
     required int expectedVersion,
     required Map<String, Object?> changes,
+    String label = '',
   }) async {
-    final result = await _callable.call('editConfirmedTransaction', {
-      'businessId': businessId,
-      'transactionId': transactionId,
-      'requestId': requestId,
-      'expectedVersion': expectedVersion,
-      'changes': changes,
-    });
-    return result.map(MutationResult.fromMap);
+    final result = await _queue.run(
+      QueueableCall(
+        kind: OutboxKind.edit,
+        businessId: businessId,
+        transactionId: transactionId,
+        label: _labelOr(label, 'Edit'),
+        baseVersion: expectedVersion,
+        payload: {
+          'businessId': businessId,
+          'transactionId': transactionId,
+          'requestId': requestId,
+          'expectedVersion': expectedVersion,
+          'changes': changes,
+        },
+      ),
+    );
+    return _outcome(result, MutationResult.fromMap);
   }
 
   @override
-  Future<AppResult<MutationResult>> cancel(
+  Future<AppResult<ActionOutcome<MutationResult>>> cancel(
     String businessId,
     String transactionId, {
     required String requestId,
     int? expectedVersion,
     String? reason,
+    String label = '',
   }) async {
     final trimmed = reason?.trim() ?? '';
-    final result = await _callable.call('cancelTransaction', {
-      'businessId': businessId,
-      'transactionId': transactionId,
-      'requestId': requestId,
-      'expectedVersion': ?expectedVersion,
-      if (trimmed.isNotEmpty) 'reason': trimmed,
-    });
-    return result.map(MutationResult.fromMap);
+    final result = await _queue.run(
+      QueueableCall(
+        kind: OutboxKind.cancel,
+        businessId: businessId,
+        transactionId: transactionId,
+        label: _labelOr(label, 'Cancel'),
+        payload: {
+          'businessId': businessId,
+          'transactionId': transactionId,
+          'requestId': requestId,
+          'expectedVersion': ?expectedVersion,
+          if (trimmed.isNotEmpty) 'reason': trimmed,
+        },
+      ),
+    );
+    return _outcome(result, MutationResult.fromMap);
   }
 
   @override
-  Future<AppResult<SettlementResult>> recordSettlement(
+  Future<AppResult<ActionOutcome<SettlementResult>>> recordSettlement(
     String businessId,
     String transactionId, {
     required String requestId,
@@ -305,55 +348,35 @@ class TransactionService implements TransactionRepository {
     String? method,
     String? note,
     int? expectedVersion,
+    String label = '',
   }) async {
-    final result = await _callable.call('recordSettlement', {
-      'businessId': businessId,
-      'transactionId': transactionId,
-      'requestId': requestId,
-      'kind': kind.key,
-      'amountMinor': amountMinor,
-      'date': date,
-      if (method?.trim().isNotEmpty ?? false) 'method': method!.trim(),
-      if (note?.trim().isNotEmpty ?? false) 'note': note!.trim(),
-      'expectedVersion': ?expectedVersion,
-    });
-    return result.map(SettlementResult.fromMap);
-  }
-
-  @override
-  Future<AppResult<String>> uploadAttachment(
-    String businessId,
-    String transactionId,
-    PickedAttachment file,
-  ) async {
-    if (!await _connectivity.refresh()) {
-      return const Failure(AppException.offline());
-    }
-    final safeName = file.name.replaceAll(RegExp('[^A-Za-z0-9._-]'), '_');
-    final stamp = DateTime.now().millisecondsSinceEpoch;
-    final path = attachmentPath(
-      businessId,
-      transactionId,
-      '${stamp}_$safeName',
+    final result = await _queue.run(
+      QueueableCall(
+        kind: OutboxKind.settle,
+        businessId: businessId,
+        transactionId: transactionId,
+        label: _labelOr(label, kind.label),
+        payload: {
+          'businessId': businessId,
+          'transactionId': transactionId,
+          'requestId': requestId,
+          'kind': kind.key,
+          'amountMinor': amountMinor,
+          'date': date,
+          if (method?.trim().isNotEmpty ?? false) 'method': method!.trim(),
+          if (note?.trim().isNotEmpty ?? false) 'note': note!.trim(),
+          'expectedVersion': ?expectedVersion,
+        },
+      ),
     );
-    return AppResult.guard(() async {
-      await _storage
-          .ref(path)
-          .putData(file.bytes, SettableMetadata(contentType: file.contentType));
-      return path;
-    });
+    return _outcome(result, SettlementResult.fromMap);
   }
 
   @override
-  Future<AppResult<Uint8List>> downloadAttachment(String path) =>
-      AppResult.guard(() async {
-        final bytes = await _storage.ref(path).getData();
-        if (bytes == null) {
-          throw const AppException(
-            kind: AppErrorKind.notFound,
-            message: 'That attachment is no longer available.',
-          );
-        }
-        return bytes;
-      });
+  Stream<List<OutboxEntry>> watchQueued(String businessId) =>
+      _engine.entries.map(
+        (entries) => List<OutboxEntry>.unmodifiable(
+          entries.where((entry) => entry.businessId == businessId),
+        ),
+      );
 }

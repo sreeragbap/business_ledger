@@ -4,7 +4,6 @@ import {
 import {
   collection, doc, getDoc, getDocs, query, setDoc, updateDoc, deleteDoc, where,
 } from "firebase/firestore";
-import {ref, uploadBytes, getBytes} from "firebase/storage";
 import {readFileSync} from "node:fs";
 import {join} from "node:path";
 import {afterAll, beforeAll, beforeEach, describe, it} from "vitest";
@@ -15,14 +14,13 @@ const OTHER = "biz2";
 
 const draft = (extra: Record<string, unknown> = {}) => ({
   status: "draft", type: "sale", description: "Bricks", date: "2026-10-01", totalMinor: 1000,
-  lineItems: [], attachments: [], createdBy: "editor", ...extra,
+  lineItems: [], createdBy: "editor", ...extra,
 });
 
 beforeAll(async () => {
   env = await initializeTestEnvironment({
     projectId: process.env.GCLOUD_PROJECT ?? "demo-business-ledger",
     firestore: {rules: readFileSync(join(__dirname, "../../../firestore.rules"), "utf8")},
-    storage: {rules: readFileSync(join(__dirname, "../../../storage.rules"), "utf8")},
   });
 });
 
@@ -109,6 +107,23 @@ describe("transactions", () => {
     await assertFails(getDoc(doc(db, "requests/x")));
     await assertFails(getDoc(doc(as("viewer"), `businesses/${B}/audit/a1`)));
   });
+
+  it("issued documents are read-only to clients: no field can be changed", async () => {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), `businesses/${B}/documents/d1`), {
+        type: "invoice", number: "INV-2026-0001", transactionId: "t1", snapshot: {}, voided: false,
+      });
+    });
+    await assertSucceeds(getDoc(doc(as("viewer"), `businesses/${B}/documents/d1`)));
+    await assertFails(getDoc(doc(as("outsider"), `businesses/${B}/documents/d1`)));
+    for (const uid of ["owner", "admin", "editor"]) {
+      const ref = doc(as(uid), `businesses/${B}/documents/d1`);
+      await assertFails(updateDoc(ref, {number: "INV-2026-0099"}));
+      await assertFails(updateDoc(ref, {voided: true}));
+      await assertFails(updateDoc(ref, {storagePath: `businesses/${B}/documents/d1.pdf`}));
+      await assertFails(deleteDoc(ref));
+    }
+  });
 });
 
 describe("configuration", () => {
@@ -120,20 +135,5 @@ describe("configuration", () => {
     await assertFails(setDoc(doc(as("viewer"), `businesses/${B}/categories/c2`), category));
     await assertFails(setDoc(doc(as("editor"), `businesses/${B}/categories/c3`), {...category, kind: "bogus"}));
     await assertFails(setDoc(doc(as("outsider"), `businesses/${B}/categories/c4`), category));
-  });
-});
-
-describe("storage", () => {
-  const bytes = new Uint8Array([1, 2, 3]);
-  it("attachments: members only, images or PDF, 10 MB", async () => {
-    const editorStorage = env.authenticatedContext("editor").storage();
-    await assertSucceeds(uploadBytes(ref(editorStorage, `businesses/${B}/attachments/t1/a.png`), bytes, {contentType: "image/png"}));
-    await assertFails(uploadBytes(ref(editorStorage, `businesses/${B}/attachments/t1/a.exe`), bytes, {contentType: "application/octet-stream"}));
-    await assertFails(uploadBytes(
-      ref(editorStorage, `businesses/${B}/attachments/t1/big.pdf`), new Uint8Array(10 * 1024 * 1024 + 1), {contentType: "application/pdf"},
-    ));
-    await assertFails(uploadBytes(ref(env.authenticatedContext("viewer").storage(), `businesses/${B}/attachments/t1/v.png`), bytes, {contentType: "image/png"}));
-    await assertFails(getBytes(ref(env.authenticatedContext("outsider").storage(), `businesses/${B}/attachments/t1/a.png`)));
-    await assertSucceeds(getBytes(ref(env.authenticatedContext("viewer").storage(), `businesses/${B}/attachments/t1/a.png`)));
   });
 });

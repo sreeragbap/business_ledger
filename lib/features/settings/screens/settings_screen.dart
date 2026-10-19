@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:auto_route/auto_route.dart';
 import 'package:business_ledger/core/di/injection.dart';
 import 'package:business_ledger/core/router/app_router.dart';
+import 'package:business_ledger/core/sync/sync_status.dart';
 import 'package:business_ledger/core/theme/app_colors.dart';
 import 'package:business_ledger/core/theme/app_spacing.dart';
 import 'package:business_ledger/core/widgets/app_card.dart';
@@ -16,6 +17,9 @@ import 'package:business_ledger/features/business/domain/const/role.dart';
 import 'package:business_ledger/features/business/logic/business_scope_cubit/business_scope_cubit.dart';
 import 'package:business_ledger/features/business/widgets/business_avatar.dart';
 import 'package:business_ledger/features/business/widgets/business_switcher.dart';
+import 'package:business_ledger/features/sync/logic/sync_cubit/sync_cubit.dart';
+import 'package:business_ledger/features/sync/widgets/sign_out_guard.dart';
+import 'package:business_ledger/features/sync/widgets/sync_status_banner.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
@@ -33,6 +37,7 @@ class SettingsScreen extends StatelessWidget implements AutoRouteWrapper {
     providers: [
       BlocProvider<AuthCubit>.value(value: getIt<AuthCubit>()),
       BlocProvider<AppLockCubit>.value(value: getIt<AppLockCubit>()),
+      BlocProvider<SyncCubit>.value(value: getIt<SyncCubit>()),
     ],
     child: this,
   );
@@ -72,6 +77,9 @@ class SettingsScreen extends StatelessWidget implements AutoRouteWrapper {
             if (user != null) _AccountCard(user: user),
             SizedBox(height: AppSpacing.xxl.h),
             const _BusinessSection(),
+            const AppSectionLabel('Device'),
+            const _SyncLink(),
+            SizedBox(height: AppSpacing.xxl.h),
             const AppSectionLabel('Security'),
             AppCard(
               padding: EdgeInsets.zero,
@@ -120,6 +128,11 @@ class SettingsScreen extends StatelessWidget implements AutoRouteWrapper {
 
   Future<void> _confirmSignOut(BuildContext context) async {
     final auth = context.read<AuthCubit>();
+    // Actions still in the outbox block sign-out until synced or discarded.
+    if (context.read<SyncCubit>().state.entries.isNotEmpty) {
+      if (await confirmSignOutWithPending(context)) await auth.signOut();
+      return;
+    }
     final confirmed = await showAppConfirmDialog(
       context: context,
       title: 'Sign out?',
@@ -130,6 +143,36 @@ class SettingsScreen extends StatelessWidget implements AutoRouteWrapper {
       destructive: true,
     );
     if (confirmed) await auth.signOut();
+  }
+}
+
+/// Settings › Sync, with a one-line status.
+class _SyncLink extends StatelessWidget {
+  const _SyncLink();
+
+  @override
+  Widget build(BuildContext context) {
+    final status = context.select<SyncCubit, SyncStatus>(
+      (cubit) => cubit.state.status,
+    );
+    final info = SyncStatusBanner.describe(status);
+    return AppCard(
+      padding: EdgeInsets.zero,
+      child: ListTile(
+        leading: Icon(
+          status.syncEnabled
+              ? Icons.cloud_sync_outlined
+              : Icons.sync_disabled_rounded,
+        ),
+        title: const Text('Sync'),
+        subtitle: Text(
+          info?.message ??
+              (status.syncEnabled ? 'Cloud sync on · up to date' : ''),
+        ),
+        trailing: const Icon(Icons.chevron_right_rounded),
+        onTap: () => unawaited(context.router.push(const SyncRoute())),
+      ),
+    );
   }
 }
 

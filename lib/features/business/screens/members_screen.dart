@@ -17,6 +17,7 @@ import 'package:business_ledger/features/business/domain/models/member.dart';
 import 'package:business_ledger/features/business/logic/business_scope_cubit/business_scope_cubit.dart';
 import 'package:business_ledger/features/business/logic/members_cubit/members_cubit.dart';
 import 'package:business_ledger/features/business/widgets/business_avatar.dart';
+import 'package:business_ledger/features/sync/widgets/cloud_required.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
@@ -67,6 +68,7 @@ class MembersScreen extends StatelessWidget implements AutoRouteWrapper {
       (cubit) => cubit.state.member,
     );
     final role = me?.role ?? Role.viewer;
+    final reachable = CloudRequired.watch(context);
     return BlocListener<MembersCubit, MembersState>(
       listenWhen: (p, c) => p.actionStatus != c.actionStatus,
       listener: (context, state) => unawaited(_onAction(context, state)),
@@ -74,7 +76,17 @@ class MembersScreen extends StatelessWidget implements AutoRouteWrapper {
         appBar: AppBar(title: const Text('Members')),
         floatingActionButton: role.canManageMembers
             ? FloatingActionButton.extended(
-                onPressed: () => unawaited(_showAddMember(context, role)),
+                // Member changes cannot be queued: explain instead.
+                backgroundColor: reachable ? null : AppColors.surfaceHigh,
+                foregroundColor: reachable ? null : AppColors.textSecondary,
+                tooltip: reachable ? null : CloudRequired.reason,
+                onPressed: reachable
+                    ? () => unawaited(_showAddMember(context, role))
+                    : () => showAppSnackBar(
+                        context,
+                        CloudRequired.reason,
+                        kind: AppSnackBarKind.error,
+                      ),
                 icon: const Icon(Icons.person_add_alt_1_rounded),
                 label: const Text('Add member'),
               )

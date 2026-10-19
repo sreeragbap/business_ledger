@@ -1,7 +1,9 @@
 # Business Ledger — Architecture
 
 A multi-business digital ledger. Flutter (Android + iOS) over Firebase
-(Auth, Firestore, Storage, Cloud Functions).
+(Auth, Firestore, Cloud Functions). The app stores **text only**: there is
+no file storage (no Cloud Storage, no attachments); invoices, bills and
+receipts are rendered on the device from Firestore data whenever needed.
 
 Conventions are taken from `easify_crm_flutter` (see
 [Conventions](#conventions)); deviations are listed with the reason.
@@ -21,13 +23,15 @@ lib/
 │   ├── money/      Money, Currency            ◀ the only place money is maths
 │   ├── ledger/     LedgerMath, rules           ◀ pure, unit-tested
 │   ├── router/     auto_route, AuthGuard
+│   ├── sync/       Cloud sync switch, outbox, SyncEngine (§2)
 │   ├── theme/      dark tokens
 │   └── widgets/    App* components
 └── features/<name>/{domain/{const,models,repository,services},logic,screens,widgets}
 ```
 
 * A screen never touches Firestore. Blocs depend on `XRepository`
-  (abstract); `XService` implements it over Firestore / Functions.
+  (abstract); `XService` implements it over Firestore / Functions. There
+  is no Cloud Storage layer: every record is text in Firestore.
 * Every repository call returns `AppResult<T>` and never throws.
 * No financial arithmetic in widgets or blocs: they call `LedgerMath`.
 
@@ -49,14 +53,109 @@ document record or membership.
 
 ### Offline behaviour
 
-* Firestore persistence is on; all reads are served from cache when
-  offline, and the UI shows an "offline" banner.
-* Draft and configuration writes queue locally and sync on reconnect.
-* Financial callables require connectivity. The UI disables them
-  offline with a clear message instead of queuing — a payment silently
-  replayed hours later is worse than one the user must retry.
-* Every callable carries a client-generated `requestId`; a retry after
-  a timeout returns the original result instead of applying twice.
+**Cloud sync switch.** Settings › Sync has a per-device *Cloud sync* switch
+(default on, `SyncSettings`, stored in shared_preferences). Off, the app
+works entirely from this device: `FirebaseFirestore.disableNetwork()` is
+applied (also at bootstrap, before the first screen), reads come from the
+persistent cache (unlimited size), and every change waits locally until it is
+switched back on. "The cloud is reachable" (`CloudAvailability`) means
+*device online **and** sync on*; everything that used to ask "am I online?"
+asks that instead, so sync-off behaves exactly like offline.
+
+**Drafts and configuration** are plain Firestore writes, queued by the SDK
+and reported as saved at once (`LocalFirstWriter`); a rules rejection that
+arrives later is shown as a snack bar.
+
+**Money actions are queued, not applied locally.** Confirm, record
+settlement, edit confirmed and cancel go through `SyncQueue`:
+
+* cloud reachable → called directly (the `RequestTracker` retry rules
+  still apply);
+* offline, sync off, an earlier action for the same transaction still
+  queued, local Firestore writes not acknowledged within a few seconds, or a
+  direct call failing with unavailable / deadline-exceeded / no network →
+  the action is appended to the **outbox** and the UI shows it as *Pending
+  sync* (not an error). Nothing about it is reflected in balances until the
+  server applies it: there is no optimistic money maths.
+
+The outbox (`core/sync/`) is a JSON file in the app support directory,
+written atomically (temp file + rename); an unreadable file is moved aside
+and the queue starts empty. An entry holds the owner `uid`, business,
+callable, payload (with its `requestId`), transaction, a human label
+("Payment ₹1,200.00 · Cement bags"), status (pending / syncing / failed),
+attempts, last error and, for edits, the version the user edited.
+
+**Replay** (`SyncEngine`, started by `App`) runs while a user is signed in,
+sync is on and the device is online. It sends that user's entries oldest
+first, one at a time (other users' entries stay dormant: the server's
+idempotency record is per user):
+
+* Before each entry it awaits `waitForPendingWrites()` with a timeout, so a
+  draft created or edited offline is on the server before
+  `confirmTransaction` reads it; on timeout nothing is sent and it retries
+  later.
+* **Replay safety.** The entry keeps its original `requestId`. A replay of
+  an action that did land (the app died mid-call, a timeout) returns the
+  stored result instead of applying it again (`requests/{uid}_{requestId}`).
+* **Version chaining.** A queued `expectedVersion` would be stale, so it is
+  omitted where optional (confirm, settle, cancel). An edit requires it:
+  it is sent as the version the user edited plus the number of earlier
+  queued actions on the same transaction that have since succeeded (every
+  server write bumps `version` by exactly 1). If the server still answers
+  `aborted`, someone else changed the transaction: the entry fails with
+  "Changed by someone else — review and retry".
+* **Failures.** A definitive refusal (invalid-argument, failed-precondition,
+  permission-denied, not-found, already-exists, aborted, unauthenticated)
+  marks the entry *failed* with the server's user-safe message and holds
+  back later entries for **the same transaction** (they likely depend on
+  it); other transactions continue. A transient one (unavailable,
+  deadline-exceeded, internal, resource-exhausted, network) keeps it pending
+  with exponential backoff (5 s doubling to 5 min); a reconnect or "Sync
+  now" retries at once. The user can retry a failed entry (same
+  `requestId`) or discard it, together with its dependents after
+  confirmation.
+
+Why queuing money is safe now (the earlier rule refused financial callables
+offline): replays are idempotent by `requestId`; the server re-validates
+every rule against the current balance at replay time, so a payment that no
+longer fits is refused rather than applied; and the pending state is always
+visible (sync banner, *Pending sync* on rows and under the balance, the Sync
+screen), with refusals flagged for the user.
+
+The outbox holds callables only (confirm, settle, edit, cancel). There are
+no file uploads to queue: the app stores text only. An entry of an unknown
+kind (e.g. an `upload` left by an older build) is skipped when the outbox
+is read.
+
+**Never queued** (they need the server's answer now): create business,
+member changes, delete category, issue document. Offline or with sync off
+they are disabled with "Needs a connection and sync turned on".
+
+**Status.** `SyncStatus` = sync on, online, syncing, pending and failed
+counts, last sync time and `firestoreHasPendingWrites`. Firestore has no
+pending-write count, so the latter is a heuristic: writes this session
+handed to the queue without an acknowledgement (`LocalFirstWriter` →
+`PendingWritesTracker`), plus a `waitForPendingWrites()` probe at start and
+on reconnect that has not finished within a grace period (covers writes
+left by an earlier session).
+
+**Client pre-validation counts the queue.** The balance shown is always
+the server's, but a *new* settlement is checked as if this user's queued
+actions on the transaction (pending or syncing, not failed) had applied
+(`PendingSettlements`): payments and credits against outstanding minus
+queued payments and credits; refunds against refundable minus queued
+refunds (queued payments are not refundable until applied). A queued cancel
+blocks further settlements; a draft with a queued confirm can be settled,
+checked against its total as if confirmed (fully paid if the confirm is
+"as paid"). The settlement sheet's preview then reads "After this and
+pending actions".
+
+**Sign-out is blocked** while the signed-in user has outbox entries (they
+could only be replayed by signing back in as that user). The dialog offers
+"Sync now" (enabled only when the cloud is reachable; it closes by itself
+once the outbox is empty and sign-out proceeds), "Discard and sign out"
+(after a second confirmation: drops that user's entries and staged files),
+or Cancel.
 
 ## 3. Firestore data model
 
@@ -124,7 +223,6 @@ across time zones.
 | `isOpen` | `status == confirmed && outstanding > 0` (for overdue queries) |
 | `customFields` | `{fieldId: value}` |
 | `linkedTransactionId`, `linkKind` | refund/adjustment → original |
-| `attachments[]` | Storage paths |
 | `searchTokens[]` | lowercase word prefixes for search |
 | `version` | optimistic concurrency, bumped on every server write |
 | `createdBy`, `createdAt`, `updatedAt`, `confirmedAt`, `cancelledAt` | |
@@ -232,7 +330,10 @@ The dashboard always shows **cash received / paid** separately from
   `counters/{type}` in a transaction, and stores a snapshot. The same
   `(transactionId, settlementId, type)` returns the existing document.
 * The PDF is rendered on device from the snapshot (`pdf` package),
-  previewed/shared with `printing`, optionally uploaded to Storage.
+  previewed, shared and printed with `printing`. It is rendered on demand
+  every time and **never stored**: the stored snapshot is enough to
+  reproduce it exactly. Issued documents are read-only to clients (rules
+  allow no client write).
 * Cancelled transactions cannot issue documents; existing ones render
   with a **VOID** watermark.
 
@@ -242,8 +343,6 @@ The dashboard always shows **cash received / paid** separately from
   `exists()/get()` on it. Roles: owner > admin > editor > viewer.
 * viewer: read. editor: drafts + config. admin: + financial ops +
   members. owner: + delete business / transfer ownership.
-* Storage paths `businesses/{bid}/...` mirror the same membership check;
-  attachments ≤ 10 MB, images/PDF only.
 * Functions re-check membership and role for every call (rules do not
   apply to the Admin SDK).
 
@@ -274,3 +373,4 @@ flutter_screenutil scaling, `package:` imports, very_good_analysis,
 | Light theme only | Dark theme as the primary theme | Product requirement. |
 | Models parsed from JSON strings loosely | Strict typed Firestore converters | Our own schema; drift is a bug to surface, not absorb. |
 | Floating-point money (`ValueFormat.money(num)`) | `Money` over integer minor units | Financial correctness. |
+| Brief §3/§8 optional attachments + stored documents | Not implemented | User decision: text-only data; documents are reproducible from the stored snapshot. |

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:business_ledger/core/domain/app_result.dart';
 import 'package:business_ledger/core/ledger/ledger_enums.dart';
 import 'package:business_ledger/core/money/currency.dart';
+import 'package:business_ledger/core/sync/outbox_entry.dart';
 import 'package:business_ledger/features/auth/domain/models/app_user.dart';
 import 'package:business_ledger/features/business/domain/const/role.dart';
 import 'package:business_ledger/features/business/domain/const/standard_field.dart';
@@ -179,6 +180,129 @@ void main() {
     unawaited(projects.dispose());
   });
 
+  testWidgets('detail: queued actions are listed under an unchanged '
+      'balance; money actions stay available offline', (tester) async {
+    final fieldRepository = StubCustomFieldRepository();
+    connectivity.isOnline = false;
+    final cubit = TransactionDetailCubit(
+      repository,
+      fieldRepository,
+      connectivity.service,
+      now: () => now,
+    );
+    var reviews = 0;
+    {
+      repository.emitTransaction(
+        confirmedSale(paid: 40000, status: PaymentStatus.partiallyPaid),
+      );
+      await cubit.start(
+        businessId: 'b1',
+        transactionId: 't1',
+        role: Role.admin,
+      );
+    }
+    await tester.pumpApp(
+      BlocProvider.value(
+        value: cubit,
+        child: TransactionDetailView(
+          currency: Currency.inr,
+          onEdit: (_) {},
+          onOpenTransaction: (_) {},
+          onRecordSettlement: (_) {},
+          onDocuments: (_) {},
+          onDuplicated: (_) {},
+          onOpenSync: () => reviews++,
+        ),
+      ),
+    );
+    await _pumpFrames(tester);
+    expect(find.text('Pending sync'), findsNothing);
+
+    repository.queued.add([
+      queuedEntry('r1', label: 'Payment ₹200.00 · Cement bags'),
+      queuedEntry('r-other', transactionId: 't9', label: 'Not this one'),
+    ]);
+    await _pumpFrames(tester);
+    // The chip in the header and the card under the balance.
+    expect(find.text('Pending sync'), findsNWidgets(2));
+    expect(
+      find.text('Payment ₹200.00 · Cement bags — waiting to sync'),
+      findsOneWidget,
+    );
+    expect(find.textContaining('Not this one'), findsNothing);
+    expect(
+      find.textContaining('Not in the balance above'),
+      findsOneWidget,
+    );
+    // The server balance is untouched: still 40,000 of 100,000 paid.
+    expect(find.text('Partially paid'), findsOneWidget);
+    // Recording money stays possible, with the queueing explained.
+    expect(find.text('Record payment'), findsOneWidget);
+    expect(find.textContaining('applied when synced'), findsOneWidget);
+
+    repository.queued.add([
+      queuedEntry(
+        'r1',
+        label: 'Payment ₹200.00 · Cement bags',
+        status: OutboxStatus.failed,
+        error: const OutboxError(message: 'More than what is outstanding.'),
+      ),
+    ]);
+    await _pumpFrames(tester);
+    expect(find.text('Needs attention'), findsOneWidget);
+    expect(
+      find.textContaining("couldn't be applied: More than what is"),
+      findsOneWidget,
+    );
+    await tester.tap(find.text('Review'));
+    expect(reviews, 1);
+    expect(tester.takeException(), isNull);
+
+    unawaited(cubit.close());
+    unawaited(fieldRepository.dispose());
+  });
+
+  testWidgets('list: rows with queued actions carry a Pending sync badge', (
+    tester,
+  ) async {
+    final categories = StubCategoryRepository();
+    final parties = StubPartyRepository();
+    final projects = StubProjectRepository();
+    final cubit = TransactionListCubit(
+      repository,
+      categories,
+      parties,
+      projects,
+      debounce: Duration.zero,
+      now: () => now,
+    );
+    {
+      await selectAs(Role.admin);
+      await cubit.start('b1');
+    }
+    await tester.pumpApp(
+      MultiBlocProvider(
+        providers: [
+          BlocProvider.value(value: scope),
+          BlocProvider.value(value: cubit),
+        ],
+        child: TransactionListView(onOpen: (_) {}, onCreate: (_) {}),
+      ),
+    );
+    repository
+      ..emitPage([confirmedSale(), draftExpense()])
+      ..queued.add([queuedEntry('r1')]);
+    await _pumpFrames(tester);
+    expect(find.text('Pending sync'), findsOneWidget);
+    expect(cubit.state.syncMarkOf('t1'), SyncMark.pending);
+    expect(tester.takeException(), isNull);
+
+    unawaited(cubit.close());
+    unawaited(categories.dispose());
+    unawaited(parties.dispose());
+    unawaited(projects.dispose());
+  });
+
   Widget detail(
     TransactionDetailCubit cubit, {
     List<SettlementKind>? recorded,
@@ -190,7 +314,6 @@ void main() {
       onOpenTransaction: (_) {},
       onRecordSettlement: (kind) => recorded?.add(kind),
       onDocuments: (_) {},
-      onOpenAttachment: (_) {},
       onDuplicated: (_) {},
     ),
   );
@@ -350,6 +473,51 @@ void main() {
 
     // More than outstanding is refused inline, before any call.
     cubit.setAmount(60001);
+    await _pumpFrames(tester);
+    expect(
+      find.text('That is more than the outstanding balance.'),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
+
+    unawaited(cubit.close());
+  });
+
+  testWidgets('settlement sheet: a queued payment shrinks what is left and '
+      'the preview says it includes pending actions', (tester) async {
+    final tx = confirmedSale(paid: 40000, status: PaymentStatus.partiallyPaid);
+    final cubit = SettlementFormCubit(repository, now: () => now);
+    {
+      repository.emitTransaction(tx);
+      await cubit.start(
+        businessId: 'b1',
+        transaction: tx,
+        queued: [
+          queuedEntry(
+            'q1',
+            payload: {'kind': 'payment', 'amountMinor': 50000},
+          ),
+        ],
+      );
+    }
+    await tester.pumpApp(
+      SingleChildScrollView(
+        child: BlocProvider.value(
+          value: cubit,
+          child: const SettlementSheet(currency: Currency.inr),
+        ),
+      ),
+    );
+    await _pumpFrames(tester);
+    expect(find.text('Full outstanding (₹100.00)'), findsOneWidget);
+    await tester.tap(find.text('Full outstanding (₹100.00)'));
+    await _pumpFrames(tester);
+    expect(cubit.state.amountMinor, 10000);
+    expect(find.text('After this and pending actions'), findsOneWidget);
+    // Server ₹400.00 paid → ₹1,000.00 once the queued ₹500.00 and this land.
+    expect(find.text('₹400.00 → ₹1,000.00'), findsOneWidget);
+
+    cubit.setAmount(10001);
     await _pumpFrames(tester);
     expect(
       find.text('That is more than the outstanding balance.'),

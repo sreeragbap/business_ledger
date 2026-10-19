@@ -3,19 +3,17 @@ import 'dart:async';
 import 'package:auto_route/auto_route.dart';
 import 'package:business_ledger/core/di/injection.dart';
 import 'package:business_ledger/core/ledger/ledger_enums.dart';
-import 'package:business_ledger/core/logic/connectivity_cubit.dart';
 import 'package:business_ledger/core/money/currency.dart';
 import 'package:business_ledger/core/router/app_router.dart';
+import 'package:business_ledger/core/widgets/app_snack_bar.dart';
 import 'package:business_ledger/features/business/logic/business_scope_cubit/business_scope_cubit.dart';
 import 'package:business_ledger/features/documents/domain/models/document_action.dart';
 import 'package:business_ledger/features/documents/logic/document_cubit/document_cubit.dart';
 import 'package:business_ledger/features/documents/screens/document_preview_screen.dart';
 import 'package:business_ledger/features/documents/widgets/document_actions_sheet.dart';
 import 'package:business_ledger/features/transactions/domain/models/ledger_transaction.dart';
-import 'package:business_ledger/features/transactions/domain/repository/transaction_repository.dart';
 import 'package:business_ledger/features/transactions/logic/settlement_form_cubit/settlement_form_cubit.dart';
 import 'package:business_ledger/features/transactions/logic/transaction_detail_cubit/transaction_detail_cubit.dart';
-import 'package:business_ledger/features/transactions/widgets/attachment_preview.dart';
 import 'package:business_ledger/features/transactions/widgets/settlement_sheet.dart';
 import 'package:business_ledger/features/transactions/widgets/success_check.dart';
 import 'package:business_ledger/features/transactions/widgets/transaction_detail_view.dart';
@@ -48,6 +46,7 @@ class TransactionDetailScreen extends StatelessWidget
                   businessId: businessId,
                   transactionId: transactionId,
                   role: scope.role,
+                  currency: scope.business?.currency ?? Currency.inr,
                 ),
               );
             }
@@ -91,13 +90,7 @@ class TransactionDetailScreen extends StatelessWidget
         onRecordSettlement: (kind) =>
             unawaited(_recordSettlement(context, kind, currency)),
         onDocuments: (tx) => unawaited(_documents(context, tx, currency)),
-        onOpenAttachment: (path) => unawaited(
-          showAttachmentPreview(
-            context,
-            path: path,
-            load: () => getIt<TransactionRepository>().downloadAttachment(path),
-          ),
-        ),
+        onOpenSync: () => unawaited(context.router.push(const SyncRoute())),
       ),
     );
   }
@@ -112,7 +105,13 @@ class TransactionDetailScreen extends StatelessWidget
     final businessId = state.businessId;
     if (tx == null || businessId == null) return;
     final cubit = getIt<SettlementFormCubit>();
-    await cubit.start(businessId: businessId, transaction: tx, kind: kind);
+    await cubit.start(
+      businessId: businessId,
+      transaction: tx,
+      kind: kind,
+      currency: currency,
+      queued: state.queued,
+    );
     if (!context.mounted) {
       await cubit.close();
       return;
@@ -121,10 +120,15 @@ class TransactionDetailScreen extends StatelessWidget
       context: context,
       cubit: cubit,
       currency: currency,
+      online: state.online,
     );
     final recorded = cubit.state.kind;
+    final message = cubit.state.submitStatus.message;
     await cubit.close();
-    if (result != null && context.mounted) {
+    if (result == null || !context.mounted) return;
+    if (result.isQueued) {
+      showAppSnackBar(context, message, kind: AppSnackBarKind.success);
+    } else {
       showSuccessCheck(context, label: '${recorded.label} recorded');
     }
   }
@@ -158,7 +162,7 @@ class TransactionDetailScreen extends StatelessWidget
         ],
       ),
       issued: documents.state.documents,
-      online: context.read<ConnectivityCubit>().state,
+      online: detail.online,
     );
     if (action == null || !context.mounted) return;
     final existing = action.existing;

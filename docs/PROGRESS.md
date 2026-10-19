@@ -16,6 +16,11 @@ Reference conventions: `/Users/sreeragkm/Documents/projects/easify_crm_flutter`
   Until then everything is verified against the emulators.
 - Sign-in: Google + Apple (social), plus biometric app lock (local_auth).
 - Pacing: continue through stages, verify each with analyze + tests.
+- **Text only, no file storage** (no Cloud Storage, no attachments). Invoices,
+  bills and receipts are rendered on the device from the stored snapshot
+  whenever needed and never stored. Attachments, PDF upload, `storage.rules`,
+  the Storage emulator and `firebase_storage` / `image_picker` / `file_picker`
+  were removed; documents are read-only to clients.
 
 ## Reference conventions (summary)
 
@@ -40,7 +45,7 @@ Reference conventions: `/Users/sreeragkm/Documents/projects/easify_crm_flutter`
        tests in `test/core` (45 passing)
 4. [x] Cloud Functions (`functions/`): `ledger.ts` mirror (41 fixture tests shared with
        Dart, incl. search tokens), roles, idempotency (`requests/{uid_requestId}`),
-       stats deltas, all handlers, Firestore/Storage rules, indexes, firebase.json.
+       stats deltas, all handlers, Firestore rules, indexes, firebase.json.
        `npm test` (unit) and `npm run test:emulator` (26 rules + integration tests:
        isolation, concurrency, duplicates, refunds, cancel/void, numbering) pass.
        Callable contract: [FUNCTIONS_API.md](FUNCTIONS_API.md).
@@ -58,8 +63,8 @@ Reference conventions: `/Users/sreeragkm/Documents/projects/easify_crm_flutter`
 7. [x] Transactions: offline drafts, confirm / confirm-as-paid, edit confirmed (version
        checked), cancel, payments/refunds/credits with LedgerMath pre-checks, request-id
        reuse on retry, search + filters (indexed query plan + device filtering),
-       detail with balance breakdown, settlements, linked refunds, audit, documents,
-       attachments. 413 Dart tests. Not yet exercised end to end on emulator/device.
+       detail with balance breakdown, settlements, linked refunds, audit, documents
+       (attachments later removed: text only). 413 Dart tests. Not yet exercised end to end on emulator/device.
 8. [~] Dashboard & Reports tabs wired (stats, receivables/payables, overdue, daily/weekly/
        monthly series, category/project breakdown); document PDFs (invoice/bill/receipt,
        VOID watermark), DocumentCubit + actions sheet — to be wired from transaction
@@ -67,6 +72,6 @@ Reference conventions: `/Users/sreeragkm/Documents/projects/easify_crm_flutter`
 9. [ ] UI polish + animations, tests, error handling
 10. [~] `flutterfire configure` done (iOS + Android apps registered, prod uses the same
        project for now); iOS simulator build passes. Pending console steps: create
-       Firestore DB (asia-south1), enable Google + Apple auth, Blaze, Storage, Android
+       Firestore DB (asia-south1), enable Google + Apple auth, Blaze, Android
        SHA fingerprints; then re-run configure for the iOS CLIENT_ID / URL scheme,
        deploy rules, indexes and functions. Device verification.

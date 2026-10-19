@@ -103,7 +103,7 @@ class AppException extends Equatable implements Exception {
     _ => AppException.unknown(error),
   };
 
-  /// A Firestore or Storage error.
+  /// A Firestore error.
   factory AppException.fromFirebase(FirebaseException error) {
     final code = normaliseCode(error.code);
     final kind = _kindForCode(code);
@@ -215,6 +215,18 @@ class AppException extends Equatable implements Exception {
       field = null,
       cause = null;
 
+  /// Raised before a request is made, when Cloud sync is switched off on
+  /// this device. Same [kind] as [AppException.offline]: to the caller the
+  /// backend is unreachable either way.
+  const AppException.syncOff()
+    : kind = AppErrorKind.offline,
+      message = syncOffMessage,
+      code = null,
+      reason = null,
+      violation = null,
+      field = null,
+      cause = null;
+
   /// The user dismissed a sign-in sheet or system prompt.
   const AppException.cancelled()
     : kind = AppErrorKind.cancelled,
@@ -261,8 +273,8 @@ class AppException extends Equatable implements Exception {
     'unavailable' || 'network-request-failed' => AppErrorKind.offline,
     'deadline-exceeded' => AppErrorKind.timeout,
     'unauthenticated' => AppErrorKind.unauthenticated,
-    'permission-denied' || 'unauthorized' => AppErrorKind.permissionDenied,
-    'not-found' || 'object-not-found' => AppErrorKind.notFound,
+    'permission-denied' => AppErrorKind.permissionDenied,
+    'not-found' => AppErrorKind.notFound,
     // Firestore raises `aborted` for contended transactions too; either way
     // the remedy is the same: reload and retry.
     'aborted' => AppErrorKind.conflict,
@@ -274,6 +286,11 @@ class AppException extends Equatable implements Exception {
 
   static const String _offlineMessage =
       "You're offline. Connect to the internet and try again.";
+
+  /// For actions that cannot be queued while sync is off.
+  static const String syncOffMessage =
+      'Cloud sync is off. This needs a connection and sync turned on '
+      '(Settings › Sync).';
   static const String _timeoutMessage =
       'The request took too long. Check your connection and try again.';
   static const String _cancelledMessage = 'Cancelled.';

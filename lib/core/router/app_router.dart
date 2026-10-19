@@ -75,6 +75,7 @@ class AppRouter extends RootStackRouter {
       (CustomFieldsRoute.page, RoutePaths.customFields),
       (PartiesRoute.page, RoutePaths.parties),
       (ProjectsRoute.page, RoutePaths.projects),
+      (SyncRoute.page, RoutePaths.sync),
       (TransactionListRoute.page, RoutePaths.transactionList),
       (TransactionDetailRoute.page, RoutePaths.transactionDetail),
       (TransactionFormRoute.page, RoutePaths.transactionForm),

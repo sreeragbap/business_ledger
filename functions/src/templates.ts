@@ -6,7 +6,7 @@
 
 /** Built-in form sections a business can switch on or off. Keys shared with Dart `StandardField`. */
 export const STANDARD_FIELDS = [
-  "lineItems", "party", "project", "paymentMethod", "dueDate", "reference", "notes", "attachments",
+  "lineItems", "party", "project", "paymentMethod", "dueDate", "reference", "notes",
 ] as const;
 export type StandardField = (typeof STANDARD_FIELDS)[number];
 
@@ -39,7 +39,7 @@ export interface Template {
   categories: TemplateCategory[];
 }
 
-const common: StandardField[] = ["party", "paymentMethod", "dueDate", "reference", "notes", "attachments"];
+const common: StandardField[] = ["party", "paymentMethod", "dueDate", "reference", "notes"];
 
 export const TEMPLATES: Record<string, Template> = {
   general: {

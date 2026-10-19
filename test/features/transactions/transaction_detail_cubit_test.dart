@@ -2,8 +2,10 @@ import 'package:business_ledger/core/domain/app_exception.dart';
 import 'package:business_ledger/core/domain/app_result.dart';
 import 'package:business_ledger/core/ledger/ledger_enums.dart';
 import 'package:business_ledger/core/ledger/ledger_math.dart';
+import 'package:business_ledger/core/sync/outbox_entry.dart';
 import 'package:business_ledger/features/business/domain/const/role.dart';
 import 'package:business_ledger/features/transactions/domain/models/audit_entry.dart';
+import 'package:business_ledger/features/transactions/domain/models/pending_settlements.dart';
 import 'package:business_ledger/features/transactions/domain/models/transaction_results.dart';
 import 'package:business_ledger/features/transactions/logic/settlement_form_cubit/settlement_form_cubit.dart';
 import 'package:business_ledger/features/transactions/logic/transaction_detail_cubit/transaction_detail_cubit.dart';
@@ -107,7 +109,8 @@ void main() {
       await cubit.close();
     });
 
-    test('kinds are unavailable to editors and offline', () async {
+    test('kinds are unavailable to editors; offline they stay available '
+        '(queued)', () async {
       repository.emitTransaction(confirmedSale());
       final editor = await start(role: Role.editor);
       expect(
@@ -121,10 +124,9 @@ void main() {
       expect(admin.state.kindUnavailableReason(SettlementKind.payment), isNull);
       connectivity.setOnline(online: false);
       await flush();
-      expect(
-        admin.state.kindUnavailableReason(SettlementKind.payment),
-        contains('offline'),
-      );
+      expect(admin.state.online, isFalse);
+      expect(admin.state.kindUnavailableReason(SettlementKind.payment), isNull);
+      expect(admin.state.can(DetailAction.confirm), isFalse, reason: 'draft');
       await admin.close();
     });
   });
@@ -169,6 +171,80 @@ void main() {
       await cubit.confirm();
       expect(repository.calls[0].requestId, repository.calls[1].requestId);
       expect(cubit.state.actionStatus.message, 'Confirmed.');
+      await cubit.close();
+    });
+
+    test('offline a confirm is queued: success that says so, and a second '
+        'confirm is blocked while it waits', () async {
+      repository
+        ..emitTransaction(draftExpense(id: 't1', total: 120000))
+        ..queueActions = true;
+      connectivity.isOnline = false;
+      final cubit = await start();
+      expect(cubit.state.can(DetailAction.confirm), isTrue);
+      await cubit.confirm();
+      final call = repository.calls.single;
+      expect(call.name, 'confirm');
+      expect(call.label, startsWith('Confirm ₹1,200.00 · '));
+      expect(cubit.state.actionStatus.isSuccess, isTrue);
+      expect(cubit.state.actionQueued, isTrue);
+      expect(cubit.state.actionStatus.message, contains('when synced'));
+
+      repository.queued.add([
+        queuedEntry(call.requestId, kind: OutboxKind.confirm),
+      ]);
+      await flush();
+      expect(cubit.state.hasQueued, isTrue);
+      expect(cubit.state.syncMark, SyncMark.pending);
+      expect(
+        cubit.state.blockedReason(DetailAction.confirm),
+        'A confirm is already waiting to sync.',
+      );
+      await cubit.close();
+    });
+
+    test('a queued cancel blocks recording money', () async {
+      repository.emitTransaction(confirmedSale());
+      final cubit = await start();
+      expect(cubit.state.canSettleAny, isTrue);
+      repository.queued.add([queuedEntry('c', kind: OutboxKind.cancel)]);
+      await flush();
+      expect(
+        cubit.state.kindUnavailableReason(SettlementKind.payment),
+        PendingSettlements.cancelQueuedReason,
+      );
+      expect(cubit.state.canSettleAny, isFalse);
+      await cubit.close();
+    });
+
+    test('a draft with a queued confirm takes payments, checked against its '
+        'total', () async {
+      repository.emitTransaction(draftExpense(id: 't1'));
+      final cubit = await start();
+      expect(
+        cubit.state.kindUnavailableReason(SettlementKind.payment),
+        'Confirm the transaction first.',
+      );
+      repository.queued.add([queuedEntry('c', kind: OutboxKind.confirm)]);
+      await flush();
+      expect(cubit.state.kindUnavailableReason(SettlementKind.payment), isNull);
+      expect(cubit.settlementViolation(SettlementKind.payment, 5000), isNull);
+      expect(
+        cubit.settlementViolation(SettlementKind.payment, 5001),
+        LedgerViolation.overpayment,
+      );
+      await cubit.close();
+    });
+
+    test("only this transaction's queued actions are listed", () async {
+      repository.emitTransaction(confirmedSale());
+      final cubit = await start();
+      repository.queued.add([
+        queuedEntry('a'),
+        queuedEntry('b', transactionId: 't2'),
+      ]);
+      await flush();
+      expect(cubit.state.queued.map((e) => e.id), ['a']);
       await cubit.close();
     });
 
@@ -286,6 +362,43 @@ void main() {
       expect(cubit.state.result, isNotNull);
       await cubit.close();
     });
+
+    test('offline the settlement is queued with a readable label', () async {
+      repository.queueActions = true;
+      final cubit = await settle()
+        ..setAmount(120000 - 60000 - 1000);
+      await cubit.submit();
+      expect(repository.calls.single.label, 'Payment ₹590.00 · Cement bags');
+      expect(cubit.state.wasQueued, isTrue);
+      expect(cubit.state.result, isNull, reason: 'nothing applied yet');
+      expect(cubit.state.submitStatus.message, contains('when synced'));
+      await cubit.close();
+    });
+
+    test(
+      'queued settlements of the transaction count; others do not',
+      () async {
+        final cubit = await settle();
+        repository.queued.add([
+          queuedEntry('q1', payload: {'kind': 'payment', 'amountMinor': 50000}),
+          queuedEntry(
+            'q2',
+            transactionId: 't9',
+            payload: {'kind': 'payment', 'amountMinor': 50000},
+          ),
+        ]);
+        await flush();
+        expect(cubit.state.maxAmount, 10000);
+        cubit.setAmount(10001);
+        expect(cubit.state.violation, LedgerViolation.overpayment);
+        await cubit.submit();
+        expect(repository.calls, isEmpty, reason: 'refused before the call');
+        cubit.setAmount(10000);
+        expect(cubit.state.previewIncludesPending, isTrue);
+        expect(cubit.state.preview!.outstanding, 0);
+        await cubit.close();
+      },
+    );
 
     test('a conflict refreshes and asks to check again', () async {
       repository.settleResults.add(

@@ -5,8 +5,13 @@ import 'package:business_ledger/core/bloc/status.dart';
 import 'package:business_ledger/core/domain/app_result.dart';
 import 'package:business_ledger/core/ledger/ledger_enums.dart';
 import 'package:business_ledger/core/ledger/ledger_math.dart';
+import 'package:business_ledger/core/money/currency.dart';
+import 'package:business_ledger/core/sync/action_outcome.dart';
+import 'package:business_ledger/core/sync/outbox_entry.dart';
 import 'package:business_ledger/features/transactions/domain/models/ledger_dates.dart';
 import 'package:business_ledger/features/transactions/domain/models/ledger_transaction.dart';
+import 'package:business_ledger/features/transactions/domain/models/pending_settlements.dart';
+import 'package:business_ledger/features/transactions/domain/models/queue_labels.dart';
 import 'package:business_ledger/features/transactions/domain/models/settlement_rules.dart';
 import 'package:business_ledger/features/transactions/domain/models/transaction_results.dart';
 import 'package:business_ledger/features/transactions/domain/repository/transaction_repository.dart';
@@ -23,6 +28,11 @@ part 'settlement_form_state.dart';
 /// transaction stays live underneath, so the `expectedVersion` sent is the
 /// one on screen; a conflict (someone settled first) refreshes it and asks
 /// the user to check again.
+///
+/// Offline or with Cloud sync off the settlement is queued, not applied:
+/// the result is [Queued] and the server re-checks the amount on replay.
+/// Settlements already queued for the transaction count against what is
+/// left (see `PendingSettlements`).
 @injectable
 class SettlementFormCubit extends Cubit<SettlementFormState> {
   SettlementFormCubit(
@@ -37,6 +47,8 @@ class SettlementFormCubit extends Cubit<SettlementFormState> {
   final RequestTracker _requests;
   final DateTime Function() _now;
   StreamSubscription<AppResult<LedgerTransaction?>>? _live;
+  StreamSubscription<List<OutboxEntry>>? _queued;
+  Currency _currency = Currency.inr;
 
   static const int maxNoteLength = 500;
 
@@ -44,12 +56,17 @@ class SettlementFormCubit extends Cubit<SettlementFormState> {
     required String businessId,
     required LedgerTransaction transaction,
     SettlementKind? kind,
+    Currency currency = Currency.inr,
+    List<OutboxEntry> queued = const [],
   }) async {
     await _live?.cancel();
+    await _queued?.cancel();
+    _currency = currency;
+    final pending = PendingSettlements.of(queued);
     final initialKind =
         kind ??
         SettlementKind.values.firstWhere(
-          transaction.canSettle,
+          (option) => transaction.canSettle(option, pending: pending),
           orElse: () => SettlementKind.payment,
         );
     emit(
@@ -62,8 +79,20 @@ class SettlementFormCubit extends Cubit<SettlementFormState> {
         method: initialKind == SettlementKind.credit
             ? ''
             : transaction.paymentMethod,
+        queued: queued,
       ),
     );
+    _queued = _repository.watchQueued(businessId).listen((entries) {
+      if (isClosed) return;
+      emit(
+        state.copyWith(
+          queued: [
+            for (final entry in entries)
+              if (entry.transactionId == transaction.id) entry,
+          ],
+        ),
+      );
+    });
     _live = _repository.watchTransaction(businessId, transaction.id).listen((
       result,
     ) {
@@ -100,7 +129,7 @@ class SettlementFormCubit extends Cubit<SettlementFormState> {
   void fillFull() {
     final tx = state.transaction;
     if (tx == null) return;
-    setAmount(tx.maxSettlement(state.kind));
+    setAmount(state.maxAmount);
   }
 
   void setDate(String day) => emit(
@@ -123,7 +152,8 @@ class SettlementFormCubit extends Cubit<SettlementFormState> {
     final errors = <String, String>{
       if (amount == null)
         'amountMinor': 'Enter an amount.'
-      else if (tx.checkSettlement(state.kind, amount) case final violation?)
+      else if (tx.checkSettlement(state.kind, amount, pending: state.pending)
+          case final violation?)
         'amountMinor': violation.message,
       if (!LedgerDates.isValid(state.date)) 'date': 'Choose a date.',
       if (state.note.trim().length > maxNoteLength)
@@ -160,6 +190,7 @@ class SettlementFormCubit extends Cubit<SettlementFormState> {
       method: state.method,
       note: state.note,
       expectedVersion: tx.version,
+      label: QueueLabels.settlement(state.kind, amount, _currency, tx.title),
     );
     if (isClosed) return;
     _requests.settle(result.errorOrNull);
@@ -167,9 +198,12 @@ class SettlementFormCubit extends Cubit<SettlementFormState> {
       case Success(:final data):
         emit(
           state.copyWith(
-            result: data,
+            outcome: data,
             submitStatus: Status.success(
-              message: '${state.kind.label} recorded.',
+              message: data.isQueued
+                  ? '${state.kind.label} saved. It will be recorded when '
+                        'synced.'
+                  : '${state.kind.label} recorded.',
             ),
           ),
         );
@@ -192,6 +226,7 @@ class SettlementFormCubit extends Cubit<SettlementFormState> {
   @override
   Future<void> close() async {
     await _live?.cancel();
+    await _queued?.cancel();
     return super.close();
   }
 }

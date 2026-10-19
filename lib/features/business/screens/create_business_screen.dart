@@ -13,6 +13,7 @@ import 'package:business_ledger/features/business/domain/const/time_zones.dart';
 import 'package:business_ledger/features/business/logic/create_business_cubit/create_business_cubit.dart';
 import 'package:business_ledger/features/business/widgets/business_switcher.dart';
 import 'package:business_ledger/features/business/widgets/template_card.dart';
+import 'package:business_ledger/features/sync/widgets/cloud_required.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
@@ -74,6 +75,7 @@ class _CreateBusinessScreenState extends State<CreateBusinessScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final reachable = CloudRequired.watch(context);
     final textTheme = Theme.of(context).textTheme;
     return BlocListener<CreateBusinessCubit, CreateBusinessState>(
       listenWhen: (p, c) => p.submitStatus != c.submitStatus,
@@ -156,10 +158,18 @@ class _CreateBusinessScreenState extends State<CreateBusinessScreen> {
                   SizedBox(height: AppSpacing.md.h),
                 ],
                 SizedBox(height: AppSpacing.lg.h),
+                if (!reachable) ...[
+                  Text(
+                    CloudRequired.reason,
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                  SizedBox(height: AppSpacing.sm.h),
+                ],
                 AppButton(
                   label: 'Create business',
                   isLoading: loading,
-                  onPressed: _submit,
+                  onPressed: reachable ? _submit : null,
                 ),
               ],
             );

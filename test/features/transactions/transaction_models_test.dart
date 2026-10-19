@@ -9,7 +9,6 @@ import 'package:business_ledger/features/transactions/domain/models/settlement.d
 import 'package:business_ledger/features/transactions/domain/models/settlement_rules.dart';
 import 'package:business_ledger/features/transactions/domain/models/transaction_draft.dart';
 import 'package:business_ledger/features/transactions/domain/models/transaction_filter.dart';
-import 'package:business_ledger/features/transactions/domain/models/transaction_results.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -100,7 +99,6 @@ void main() {
       expect(tx.paidMinor, 0);
       expect(tx.lineItems, isEmpty);
       expect(tx.customFields, isEmpty);
-      expect(tx.attachments, ['ok']);
       expect(tx.paymentStatus, isNull);
       expect(tx.title, 'Expense');
     });
@@ -195,7 +193,6 @@ void main() {
       ],
       totalMinor: 1,
       customFields: const {'f1': 'Site A', 'f2': '  ', 'f3': null, 'f4': false},
-      attachments: const ['businesses/b1/attachments/t9/1_a.pdf'],
     );
 
     test('a new draft has exactly what validDraft accepts', () {
@@ -220,6 +217,8 @@ void main() {
         'isOpen',
         'outstandingMinor',
         'effectiveMinor',
+        // Text only: no attachments are written (validDraft allows absence).
+        'attachments',
       ]) {
         expect(map.containsKey(key), isFalse, reason: key);
       }
@@ -241,7 +240,6 @@ void main() {
           'amountMinor': 90000,
         },
       );
-      expect((map['attachments']! as List).length, lessThanOrEqualTo(20));
       expect(map['dateTs'], Timestamp.fromDate(DateTime.utc(2026, 10, 14)));
       expect(map['customFields'], {'f1': 'Site A', 'f4': false});
       expect(map['direction'], 'in');
@@ -348,7 +346,6 @@ void main() {
     expect(copy.id, 'n1');
     expect(copy.date, today);
     expect(copy.dueDate, isNull);
-    expect(copy.attachments, isEmpty);
     expect(copy.total, source.total);
   });
 
@@ -459,17 +456,5 @@ void main() {
       expect(LedgerDates.today(now), today);
       expect(LedgerDates.sectionLabel('2026-10-13', today), 'Yesterday');
     });
-  });
-
-  test('PickedAttachment display names and types', () {
-    expect(
-      PickedAttachment.displayName('businesses/b/attachments/t/1700_bill.pdf'),
-      'bill.pdf',
-    );
-    expect(PickedAttachment.contentTypeFor('x.JPG'), 'image/jpeg');
-    expect(
-      PickedAttachment.contentTypeFor('x.exe'),
-      'application/octet-stream',
-    );
   });
 }

@@ -4,6 +4,7 @@ import 'package:bloc/bloc.dart';
 import 'package:business_ledger/core/bloc/status.dart';
 import 'package:business_ledger/core/domain/app_result.dart';
 import 'package:business_ledger/core/ledger/ledger_enums.dart';
+import 'package:business_ledger/core/sync/outbox_entry.dart';
 import 'package:business_ledger/features/categories/domain/models/category.dart';
 import 'package:business_ledger/features/categories/domain/repository/category_repository.dart';
 import 'package:business_ledger/features/parties/domain/models/party.dart';
@@ -70,6 +71,13 @@ class TransactionListCubit extends Cubit<TransactionListState> {
       ),
     );
     _lookups
+      ..add(
+        _repository.watchQueued(businessId).listen((entries) {
+          if (!isClosed) {
+            emit(state.copyWith(syncMarks: SyncMark.byTransaction(entries)));
+          }
+        }),
+      )
       ..add(
         _categories.watchCategories(businessId).listen((result) {
           if (result case Success(:final data)) {

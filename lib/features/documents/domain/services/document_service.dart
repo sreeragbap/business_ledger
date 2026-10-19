@@ -1,37 +1,23 @@
 import 'dart:async';
-import 'dart:typed_data';
 
 import 'package:business_ledger/core/domain/app_exception.dart';
 import 'package:business_ledger/core/domain/app_result.dart';
 import 'package:business_ledger/core/firebase/callable_client.dart';
-import 'package:business_ledger/core/firebase/connectivity_service.dart';
 import 'package:business_ledger/core/firebase/firestore_refs.dart';
 import 'package:business_ledger/core/ledger/ledger_enums.dart';
 import 'package:business_ledger/features/documents/domain/models/issued_document.dart';
 import 'package:business_ledger/features/documents/domain/repository/document_repository.dart';
-import 'package:firebase_storage/firebase_storage.dart';
 import 'package:injectable/injectable.dart';
 
-/// [DocumentRepository] over the `issueDocument` callable, Firestore and
-/// Storage.
+/// [DocumentRepository] over the `issueDocument` callable and Firestore.
+/// Documents are text only: the PDF is rendered on the device from the
+/// stored snapshot whenever it is needed, and never stored.
 @LazySingleton(as: DocumentRepository)
 class DocumentService implements DocumentRepository {
-  DocumentService(
-    this._callable,
-    this._refs,
-    this._storage,
-    this._connectivity,
-  );
+  DocumentService(this._callable, this._refs);
 
   final CallableClient _callable;
   final FirestoreRefs _refs;
-  final FirebaseStorage _storage;
-  final ConnectivityService _connectivity;
-
-  /// `businesses/{bid}/documents/{docId}.pdf`, as `storage.rules` expects.
-  static String storagePathFor(String businessId, String documentId) =>
-      '${FirestoreRefs.storagePrefix(businessId)}/'
-      '${FirestoreRefs.documentsPath}/$documentId.pdf';
 
   @override
   Future<AppResult<IssueResult>> issue({
@@ -89,51 +75,6 @@ class DocumentService implements DocumentRepository {
     }
     return IssuedDocument.fromMap(snapshot.id, data);
   });
-
-  @override
-  Future<AppResult<String>> attachPdf({
-    required String businessId,
-    required IssuedDocument document,
-    required Uint8List bytes,
-  }) async {
-    if (document.isUploaded) return Success(document.storagePath!);
-    if (!await _connectivity.refresh()) {
-      return const Failure(AppException.offline());
-    }
-    return AppResult.guard(() async {
-      final path = storagePathFor(businessId, document.id);
-      final ref = _storage.ref(path);
-      // Storage rules allow create but not overwrite, so a previous attempt
-      // that uploaded the file and then failed to record it must not upload
-      // again.
-      if (!await _exists(ref)) {
-        await ref.putData(
-          bytes,
-          SettableMetadata(
-            contentType: 'application/pdf',
-            customMetadata: {'number': document.number},
-          ),
-        );
-      }
-      // Rules allow a client to change exactly this one field.
-      await _refs.document(businessId, document.id).update({
-        'storagePath': path,
-      });
-      return path;
-    });
-  }
-
-  static Future<bool> _exists(Reference ref) async {
-    try {
-      await ref.getMetadata();
-      return true;
-    } on FirebaseException catch (error) {
-      if (AppException.normaliseCode(error.code) == 'object-not-found') {
-        return false;
-      }
-      rethrow;
-    }
-  }
 
   /// Maps each snapshot to a [Success], and a parse error or a stream error
   /// to a [Failure], without ending the stream.

@@ -1,9 +1,10 @@
 import 'dart:async';
-import 'dart:typed_data';
 
 import 'package:business_ledger/core/domain/app_result.dart';
-import 'package:business_ledger/core/firebase/connectivity_service.dart';
 import 'package:business_ledger/core/ledger/ledger_enums.dart';
+import 'package:business_ledger/core/sync/action_outcome.dart';
+import 'package:business_ledger/core/sync/cloud_availability.dart';
+import 'package:business_ledger/core/sync/outbox_entry.dart';
 import 'package:business_ledger/features/projects/domain/models/project.dart';
 import 'package:business_ledger/features/projects/domain/repository/project_repository.dart';
 import 'package:business_ledger/features/transactions/domain/models/audit_entry.dart';
@@ -25,14 +26,43 @@ class WatchCall {
   final String today;
 }
 
-/// A recorded callable: its name, request id and payload.
+/// A recorded callable: its name, request id, payload and queue label.
 class CallRecord {
-  CallRecord(this.name, this.requestId, [this.data = const {}]);
+  CallRecord(
+    this.name,
+    this.requestId, [
+    this.data = const {},
+    this.label = '',
+  ]);
 
   final String name;
   final String requestId;
   final Map<String, Object?> data;
+  final String label;
 }
+
+/// A queued entry as the stub hands it back when [StubTransactionRepository]
+/// is set to queue.
+OutboxEntry queuedEntry(
+  String requestId, {
+  OutboxKind kind = OutboxKind.settle,
+  String transactionId = 't1',
+  String label = '',
+  OutboxStatus status = OutboxStatus.pending,
+  OutboxError? error,
+  Map<String, Object?> payload = const {},
+}) => OutboxEntry(
+  id: requestId,
+  uid: 'u1',
+  businessId: 'b1',
+  kind: kind,
+  payload: {'requestId': requestId, ...payload},
+  transactionId: transactionId,
+  label: label,
+  createdAt: DateTime.utc(2026, 3, 14, 9),
+  status: status,
+  lastError: error,
+);
 
 /// Hand-written [TransactionRepository]. Push stream values through the
 /// controllers; queue results in the `*Results` lists (or set the single
@@ -64,6 +94,13 @@ class StubTransactionRepository extends TransactionRepository {
   final List<bool> awaitedServer = [];
   final List<String> deleted = [];
   AppResult<void> writeResult = const Success(null);
+
+  /// Answers for create/update, in order, before falling back to
+  /// [writeResult].
+  final List<AppResult<void>> writeResults = [];
+
+  AppResult<void> _nextWrite() =>
+      writeResults.isEmpty ? writeResult : writeResults.removeAt(0);
   AppResult<String> duplicateResult = const Success('t-copy');
 
   final List<CallRecord> calls = [];
@@ -72,10 +109,40 @@ class StubTransactionRepository extends TransactionRepository {
   final List<AppResult<MutationResult>> cancelResults = [];
   final List<AppResult<SettlementResult>> settleResults = [];
 
-  AppResult<String> uploadResult = const Success(
-    'businesses/b1/attachments/t1/1_bill.pdf',
-  );
-  int uploads = 0;
+  /// Answer money actions as queued in the outbox, the way the
+  /// service does offline or with sync off.
+  bool queueActions = false;
+
+  /// What `watchQueued` emits.
+  final StreamController<List<OutboxEntry>> queued =
+      StreamController.broadcast();
+
+  AppResult<ActionOutcome<T>> _respond<T>(
+    String name,
+    String requestId,
+    String label,
+    String transactionId,
+    AppResult<T> Function() applied,
+  ) {
+    if (queueActions) {
+      return Success(
+        Queued<T>(
+          queuedEntry(
+            requestId,
+            kind: switch (name) {
+              'confirm' => OutboxKind.confirm,
+              'edit' => OutboxKind.edit,
+              'cancel' => OutboxKind.cancel,
+              _ => OutboxKind.settle,
+            },
+            transactionId: transactionId,
+            label: label,
+          ),
+        ),
+      );
+    }
+    return applied().map(Applied<T>.new);
+  }
 
   @override
   String newTransactionId(String businessId) => 't-new-${_ids++}';
@@ -151,7 +218,7 @@ class StubTransactionRepository extends TransactionRepository {
   }) async {
     created.add(draft);
     awaitedServer.add(awaitServer);
-    return writeResult;
+    return _nextWrite();
   }
 
   @override
@@ -162,7 +229,7 @@ class StubTransactionRepository extends TransactionRepository {
   }) async {
     updated.add(draft);
     awaitedServer.add(awaitServer);
-    return writeResult;
+    return _nextWrite();
   }
 
   @override
@@ -182,7 +249,7 @@ class StubTransactionRepository extends TransactionRepository {
   }) async => duplicateResult;
 
   @override
-  Future<AppResult<ConfirmResult>> confirm(
+  Future<AppResult<ActionOutcome<ConfirmResult>>> confirm(
     String businessId,
     String transactionId, {
     required String requestId,
@@ -190,6 +257,7 @@ class StubTransactionRepository extends TransactionRepository {
     bool settleNow = false,
     String? settleDate,
     String? settleMethod,
+    String label = '',
   }) async {
     calls.add(
       CallRecord('confirm', requestId, {
@@ -197,59 +265,79 @@ class StubTransactionRepository extends TransactionRepository {
         'expectedVersion': expectedVersion,
         'settleNow': settleNow,
         'settleDate': settleDate,
-      }),
+      }, label),
     );
-    return confirmResults.isEmpty
-        ? Success(
-            ConfirmResult(
-              transactionId: transactionId,
-              version: 1,
-              settlementId: settleNow ? requestId : null,
-            ),
-          )
-        : confirmResults.removeAt(0);
+    return _respond(
+      'confirm',
+      requestId,
+      label,
+      transactionId,
+      () => confirmResults.isEmpty
+          ? Success(
+              ConfirmResult(
+                transactionId: transactionId,
+                version: 1,
+                settlementId: settleNow ? requestId : null,
+              ),
+            )
+          : confirmResults.removeAt(0),
+    );
   }
 
   @override
-  Future<AppResult<MutationResult>> editConfirmed(
+  Future<AppResult<ActionOutcome<MutationResult>>> editConfirmed(
     String businessId,
     String transactionId, {
     required String requestId,
     required int expectedVersion,
     required Map<String, Object?> changes,
+    String label = '',
   }) async {
     calls.add(
       CallRecord('edit', requestId, {
         'expectedVersion': expectedVersion,
         'changes': changes,
-      }),
+      }, label),
     );
-    return editResults.isEmpty
-        ? Success(MutationResult(transactionId: transactionId, version: 2))
-        : editResults.removeAt(0);
+    return _respond(
+      'edit',
+      requestId,
+      label,
+      transactionId,
+      () => editResults.isEmpty
+          ? Success(MutationResult(transactionId: transactionId, version: 2))
+          : editResults.removeAt(0),
+    );
   }
 
   @override
-  Future<AppResult<MutationResult>> cancel(
+  Future<AppResult<ActionOutcome<MutationResult>>> cancel(
     String businessId,
     String transactionId, {
     required String requestId,
     int? expectedVersion,
     String? reason,
+    String label = '',
   }) async {
     calls.add(
       CallRecord('cancel', requestId, {
         'expectedVersion': expectedVersion,
         'reason': reason,
-      }),
+      }, label),
     );
-    return cancelResults.isEmpty
-        ? Success(MutationResult(transactionId: transactionId, version: 2))
-        : cancelResults.removeAt(0);
+    return _respond(
+      'cancel',
+      requestId,
+      label,
+      transactionId,
+      () => cancelResults.isEmpty
+          ? Success(MutationResult(transactionId: transactionId, version: 2))
+          : cancelResults.removeAt(0),
+    );
   }
 
   @override
-  Future<AppResult<SettlementResult>> recordSettlement(
+  Future<AppResult<ActionOutcome<SettlementResult>>> recordSettlement(
     String businessId,
     String transactionId, {
     required String requestId,
@@ -259,6 +347,7 @@ class StubTransactionRepository extends TransactionRepository {
     String? method,
     String? note,
     int? expectedVersion,
+    String label = '',
   }) async {
     calls.add(
       CallRecord('settle', requestId, {
@@ -267,32 +356,27 @@ class StubTransactionRepository extends TransactionRepository {
         'date': date,
         'method': method,
         'expectedVersion': expectedVersion,
-      }),
+      }, label),
     );
-    return settleResults.isEmpty
-        ? Success(
-            SettlementResult(
-              settlementId: requestId,
-              transactionId: transactionId,
-              version: 2,
-            ),
-          )
-        : settleResults.removeAt(0);
+    return _respond(
+      'settle',
+      requestId,
+      label,
+      transactionId,
+      () => settleResults.isEmpty
+          ? Success(
+              SettlementResult(
+                settlementId: requestId,
+                transactionId: transactionId,
+                version: 2,
+              ),
+            )
+          : settleResults.removeAt(0),
+    );
   }
 
   @override
-  Future<AppResult<String>> uploadAttachment(
-    String businessId,
-    String transactionId,
-    PickedAttachment file,
-  ) async {
-    uploads++;
-    return uploadResult;
-  }
-
-  @override
-  Future<AppResult<Uint8List>> downloadAttachment(String path) async =>
-      Success(Uint8List(0));
+  Stream<List<OutboxEntry>> watchQueued(String businessId) => queued.stream;
 
   Future<void> dispose() async {
     await pages.close();
@@ -302,6 +386,7 @@ class StubTransactionRepository extends TransactionRepository {
     await settlements.close();
     await linked.close();
     await audit.close();
+    await queued.close();
   }
 }
 
@@ -335,9 +420,9 @@ class StubProjectRepository extends ProjectRepository {
   Future<void> dispose() => projects.close();
 }
 
-class _MockConnectivity extends Mock implements ConnectivityService {}
+class _MockAvailability extends Mock implements CloudAvailability {}
 
-/// A [ConnectivityService] whose state the test sets.
+/// A [CloudAvailability] (online and sync on) whose state the test sets.
 class FakeConnectivity {
   FakeConnectivity({this.isOnline = true}) {
     when(() => service.isOnline).thenAnswer((_) => isOnline);
@@ -345,7 +430,7 @@ class FakeConnectivity {
     when(service.refresh).thenAnswer((_) async => isOnline);
   }
 
-  final ConnectivityService service = _MockConnectivity();
+  final CloudAvailability service = _MockAvailability();
   final StreamController<bool> _changes = StreamController.broadcast();
   bool isOnline;
 

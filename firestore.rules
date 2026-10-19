@@ -113,16 +113,14 @@ service cloud.firestore {
           && !data.keys().hasAny(['confirmedAt', 'confirmedBy', 'cancelledAt', 'linkKind', 'linkedTransactionId', 'settlementId'])
           && (!('totalMinor' in data) || data.totalMinor is int && data.totalMinor >= 0 && data.totalMinor <= 10000000000000)
           && (!('description' in data) || shortString(data.description, 200))
-          && (!('lineItems' in data) || data.lineItems is list && data.lineItems.size() <= 200)
-          && (!('attachments' in data) || data.attachments is list && data.attachments.size() <= 20);
+          && (!('lineItems' in data) || data.lineItems is list && data.lineItems.size() <= 200);
       }
 
       match /documents/{id} {
+        // Issued by issueDocument only; the PDF is rendered on the device
+        // from the stored snapshot, never stored. Read-only to clients.
         allow read: if member(bid);
-        // Only the rendered PDF's storage path may be attached by a client.
-        allow update: if editor(bid) && changes().hasOnly(['storagePath'])
-          && request.resource.data.storagePath is string;
-        allow create, delete: if false;
+        allow write: if false;
       }
 
       match /audit/{id} {

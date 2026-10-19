@@ -4,15 +4,17 @@ import 'package:business_ledger/app/app_config.dart';
 import 'package:business_ledger/core/di/injection.dart';
 import 'package:business_ledger/core/domain/app_exception.dart';
 import 'package:business_ledger/core/firebase/local_first_writer.dart';
-import 'package:business_ledger/core/logic/connectivity_cubit.dart';
 import 'package:business_ledger/core/responsive/app_screen_util.dart';
 import 'package:business_ledger/core/router/app_router.dart';
+import 'package:business_ledger/core/sync/sync_engine.dart';
+import 'package:business_ledger/core/sync/sync_status.dart';
 import 'package:business_ledger/core/theme/app_theme.dart';
 import 'package:business_ledger/core/widgets/app_snack_bar.dart';
-import 'package:business_ledger/core/widgets/offline_banner.dart';
 import 'package:business_ledger/features/app_lock/logic/app_lock_cubit/app_lock_cubit.dart';
 import 'package:business_ledger/features/auth/logic/auth_cubit/auth_cubit.dart';
 import 'package:business_ledger/features/business/logic/business_scope_cubit/business_scope_cubit.dart';
+import 'package:business_ledger/features/sync/logic/sync_cubit/sync_cubit.dart';
+import 'package:business_ledger/features/sync/widgets/sync_status_banner.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -21,7 +23,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 ///
 /// Owns the app-wide concerns that cannot live in a feature: leaving the
 /// signed-in area when the session ends, locking after time in the
-/// background, and the offline banner.
+/// background, the sync engine and its status banner.
 class App extends StatefulWidget {
   const App({super.key});
 
@@ -44,6 +46,9 @@ class _AppState extends State<App> {
       onHide: _lock.onBackgrounded,
       onShow: _lock.onResumed,
     );
+    // Replays the outbox whenever a user is signed in, sync is on and the
+    // device is online; it watches all three itself.
+    unawaited(getIt<SyncEngine>().start());
   }
 
   @override
@@ -75,9 +80,7 @@ class _AppState extends State<App> {
       providers: [
         BlocProvider<AuthCubit>.value(value: _auth),
         BlocProvider<AppLockCubit>.value(value: _lock),
-        BlocProvider<ConnectivityCubit>.value(
-          value: getIt<ConnectivityCubit>(),
-        ),
+        BlocProvider<SyncCubit>.value(value: getIt<SyncCubit>()),
         // The current business and role, for every screen.
         BlocProvider<BusinessScopeCubit>.value(
           value: getIt<BusinessScopeCubit>(),
@@ -106,7 +109,17 @@ class _AppState extends State<App> {
               themeMode: ThemeMode.dark,
               routerConfig: _router.config(),
               builder: (context, child) => _LateWriteFailures(
-                child: _OfflineFrame(child: child ?? const SizedBox.shrink()),
+                child: _SyncFrame(
+                  onTap: () {
+                    if (!_auth.state.isAuthenticated ||
+                        _isInStack(SyncRoute.name) ||
+                        _isInStack(LockRoute.name)) {
+                      return;
+                    }
+                    unawaited(_router.push(const SyncRoute()));
+                  },
+                  child: child ?? const SizedBox.shrink(),
+                ),
               ),
             ),
           ),
@@ -116,27 +129,29 @@ class _AppState extends State<App> {
   }
 }
 
-/// Puts the offline banner above every route. While it shows, it owns the
+/// Puts the sync banner above every route. While it shows, it owns the
 /// status-bar inset, so the page below drops its own top padding.
-class _OfflineFrame extends StatelessWidget {
-  const _OfflineFrame({required this.child});
+class _SyncFrame extends StatelessWidget {
+  const _SyncFrame({required this.child, required this.onTap});
 
   final Widget child;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    final offline = context.select<ConnectivityCubit, bool>(
-      (cubit) => cubit.isOffline,
+    final status = context.select<SyncCubit, SyncStatus>(
+      (cubit) => cubit.state.status,
     );
+    final showing = SyncStatusBanner.describe(status) != null;
     return ColoredBox(
       color: Theme.of(context).scaffoldBackgroundColor,
       child: Column(
         children: [
-          OfflineBanner(isOffline: offline),
+          SyncStatusBanner(status: status, onTap: onTap),
           Expanded(
             child: MediaQuery.removePadding(
               context: context,
-              removeTop: offline,
+              removeTop: showing,
               child: child,
             ),
           ),
@@ -146,9 +161,10 @@ class _OfflineFrame extends StatelessWidget {
   }
 }
 
-/// Shows a snack bar for configuration writes that the UI already reported
-/// as saved (they were queued offline) but the server later refused. Sits
-/// inside `MaterialApp`, below its `ScaffoldMessenger`.
+/// Shows a snack bar for changes the UI already reported as saved but the
+/// server later refused: configuration writes queued offline, and outbox
+/// actions refused on replay. Sits inside `MaterialApp`, below its
+/// `ScaffoldMessenger`.
 class _LateWriteFailures extends StatefulWidget {
   const _LateWriteFailures({required this.child});
 
@@ -160,6 +176,7 @@ class _LateWriteFailures extends StatefulWidget {
 
 class _LateWriteFailuresState extends State<_LateWriteFailures> {
   StreamSubscription<AppException>? _subscription;
+  StreamSubscription<SyncEvent>? _refusals;
 
   @override
   void initState() {
@@ -172,11 +189,23 @@ class _LateWriteFailuresState extends State<_LateWriteFailures> {
         kind: AppSnackBarKind.error,
       );
     });
+    _refusals = getIt<SyncEngine>().events
+        .where((event) => event.type == SyncEventType.failed)
+        .listen((event) {
+          if (!mounted) return;
+          showAppSnackBar(
+            context,
+            "${event.entry.label} couldn't be applied: "
+            '${event.entry.lastError?.message ?? 'refused'}',
+            kind: AppSnackBarKind.error,
+          );
+        });
   }
 
   @override
   void dispose() {
     unawaited(_subscription?.cancel());
+    unawaited(_refusals?.cancel());
     super.dispose();
   }
 

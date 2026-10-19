@@ -63,7 +63,6 @@ abstract final class AppConfig {
   static const int authEmulatorPort = 9099;
   static const int firestoreEmulatorPort = 8080;
   static const int functionsEmulatorPort = 5001;
-  static const int storageEmulatorPort = 9199;
 
   /// Project id for emulator runs before `flutterfire configure`. The
   /// `demo-` prefix tells the emulators never to reach a real project.
@@ -80,6 +79,5 @@ abstract final class AppConfig {
         : '1:000000000000:ios:0000000000000000',
     messagingSenderId: '000000000000',
     projectId: demoProjectId,
-    storageBucket: '$demoProjectId.appspot.com',
   );
 }

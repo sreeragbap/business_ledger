@@ -41,10 +41,6 @@
 			</array>
 		</dict>
 	</array>
-	<key>NSCameraUsageDescription</key>
-	<string>Take a photo of a bill or receipt to attach it to a transaction.</string>
-	<key>NSPhotoLibraryUsageDescription</key>
-	<string>Choose a photo of a bill or receipt to attach it to a transaction.</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>UIApplicationSceneManifest</key>

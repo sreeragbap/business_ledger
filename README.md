@@ -7,7 +7,7 @@ server-confirmed entries with payments, refunds, credits, and gap-free
 invoice/bill/receipt numbers.
 
 - **App:** Flutter (Android + iOS), bloc, get_it/injectable, auto_route
-- **Backend:** Firebase Auth, Cloud Firestore, Cloud Storage, Cloud Functions (TypeScript)
+- **Backend:** Firebase Auth, Cloud Firestore, Cloud Functions (TypeScript). Text only: no file storage; documents are rendered on device.
 - **Money:** integer minor units only; the ledger rules are implemented twice
   (Dart and TypeScript) and checked against one shared fixture file
 
@@ -28,11 +28,11 @@ test/                  Dart tests (bloc_test, mocktail)
 functions/             Cloud Functions (TypeScript, Node 22)
   src/                 handlers, ledger.ts (mirror of lib/core/ledger), schemas
   test/unit/           ledger fixture tests (no emulator)
-  test/rules/          Firestore/Storage rules tests (emulator)
+  test/rules/          Firestore rules tests (emulator)
   test/integration/    callable integration tests (emulator)
 shared/
   ledger_cases.json    ledger fixtures used by BOTH Dart and TypeScript tests
-firestore.rules, storage.rules, firestore.indexes.json, firebase.json
+firestore.rules, firestore.indexes.json, firebase.json
 docs/                  architecture, functions contract, progress
 ```
 
@@ -43,7 +43,7 @@ docs/                  architecture, functions contract, progress
 | Flutter | 3.44 (Dart 3.12) |
 | Node.js | 22 |
 | Firebase CLI | `npm i -g firebase-tools` |
-| Java | 21 (needed by the Firestore/Storage emulators) |
+| Java | 21 (needed by the Firestore emulator) |
 
 ## Setup
 
@@ -103,7 +103,7 @@ Firebase project `busineedger-ab7a1` (default in `.firebaserc`).
 
 ```sh
 firebase login
-firebase deploy --only firestore:rules,firestore:indexes,storage   # rules + indexes
+firebase deploy --only firestore:rules,firestore:indexes           # rules + indexes
 firebase deploy --only functions                                    # builds via predeploy
 ```
 

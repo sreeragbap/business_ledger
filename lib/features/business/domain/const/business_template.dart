@@ -248,7 +248,6 @@ const List<StandardField> _common = [
   StandardField.dueDate,
   StandardField.reference,
   StandardField.notes,
-  StandardField.attachments,
 ];
 
 /// A seeded category, for the preview.

@@ -12,7 +12,8 @@ class SettlementFormState extends Equatable {
     this.note = '',
     this.errors = const {},
     this.submitStatus = const Status.initial(),
-    this.result,
+    this.outcome,
+    this.queued = const [],
   });
 
   final String? businessId;
@@ -30,24 +31,44 @@ class SettlementFormState extends Equatable {
   final String note;
   final Map<String, String> errors;
   final Status submitStatus;
-  final SettlementResult? result;
+
+  /// This user's actions on the transaction still in the outbox. New
+  /// amounts are checked as if they had applied.
+  final List<OutboxEntry> queued;
+
+  PendingSettlements get pending => PendingSettlements.of(queued);
+
+  /// The preview includes actions not yet on the server.
+  bool get previewIncludesPending {
+    final p = pending;
+    return p.payments + p.credits + p.refunds > 0 || p.confirmSettles;
+  }
+
+  /// Applied by the server, or queued in the outbox.
+  final ActionOutcome<SettlementResult>? outcome;
+
+  /// The server's answer, when it was applied.
+  SettlementResult? get result => outcome?.resultOrNull;
+
+  bool get wasQueued => outcome?.isQueued ?? false;
 
   /// Why [kind] cannot be recorded, or `null`.
   String? unavailableReason(SettlementKind kind) =>
-      transaction?.settlementUnavailableReason(kind) ?? _loading(kind);
+      transaction?.settlementUnavailableReason(kind, pending: pending) ??
+      _loading(kind);
 
   String? _loading(SettlementKind kind) =>
       transaction == null ? 'Still loading.' : null;
 
   /// The most the selected kind can be.
-  int get maxAmount => transaction?.maxSettlement(kind) ?? 0;
+  int get maxAmount => transaction?.maxSettlement(kind, pending: pending) ?? 0;
 
   /// The live check of what is typed; `null` while empty or valid.
   LedgerViolation? get violation {
     final tx = transaction;
     final amount = amountMinor;
     if (tx == null || amount == null) return null;
-    return tx.checkSettlement(kind, amount);
+    return tx.checkSettlement(kind, amount, pending: pending);
   }
 
   /// The balance after this settlement, when it would be accepted.
@@ -55,7 +76,7 @@ class SettlementFormState extends Equatable {
     final tx = transaction;
     final amount = amountMinor;
     if (tx == null || amount == null || violation != null) return null;
-    return tx.previewSettlement(kind, amount);
+    return tx.previewSettlement(kind, amount, pending: pending);
   }
 
   PaymentStatus? get previewStatus {
@@ -80,7 +101,8 @@ class SettlementFormState extends Equatable {
     String? note,
     Map<String, String>? errors,
     Status? submitStatus,
-    SettlementResult? result,
+    ActionOutcome<SettlementResult>? outcome,
+    List<OutboxEntry>? queued,
   }) => SettlementFormState(
     businessId: businessId,
     transaction: transaction ?? this.transaction,
@@ -92,7 +114,8 @@ class SettlementFormState extends Equatable {
     note: note ?? this.note,
     errors: errors ?? this.errors,
     submitStatus: submitStatus ?? this.submitStatus,
-    result: result ?? this.result,
+    outcome: outcome ?? this.outcome,
+    queued: queued ?? this.queued,
   );
 
   @override
@@ -107,6 +130,7 @@ class SettlementFormState extends Equatable {
     note,
     errors,
     submitStatus,
-    result,
+    outcome,
+    queued,
   ];
 }

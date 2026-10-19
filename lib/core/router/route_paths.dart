@@ -21,6 +21,10 @@ abstract final class RoutePaths {
   static const String parties = '/business/parties';
   static const String projects = '/business/projects';
 
+  // --- Device (pushed over the shell) ---------------------------------------
+  /// Cloud sync switch and the outbox.
+  static const String sync = '/sync';
+
   // --- Transactions (pushed over the shell) --------------------------------
   /// A filtered list (the dashboard's "See all").
   static const String transactionList = '/transactions';

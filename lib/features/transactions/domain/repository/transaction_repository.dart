@@ -1,7 +1,7 @@
-import 'dart:typed_data';
-
 import 'package:business_ledger/core/domain/app_result.dart';
 import 'package:business_ledger/core/ledger/ledger_enums.dart';
+import 'package:business_ledger/core/sync/action_outcome.dart';
+import 'package:business_ledger/core/sync/outbox_entry.dart';
 import 'package:business_ledger/features/transactions/domain/models/audit_entry.dart';
 import 'package:business_ledger/features/transactions/domain/models/ledger_transaction.dart';
 import 'package:business_ledger/features/transactions/domain/models/settlement.dart';
@@ -15,15 +15,18 @@ import 'package:business_ledger/features/transactions/domain/models/transaction_
 /// * Drafts are written straight to Firestore, offline-first
 ///   (`LocalFirstWriter`): they queue while offline and the rules check
 ///   them on sync.
-/// * Everything that moves money is a callable. Callables are refused up
-///   front while offline. Each takes the caller's `requestId`: one per user
-///   action, **reused** for a retry of the same action, so a timed-out call
-///   that did land is not applied twice.
+/// * Everything that moves money is a callable. When the cloud is
+///   unavailable (offline, or Cloud sync off) the action is queued in the
+///   outbox instead and answered with [Queued]; the server re-validates it
+///   on replay. Each takes the caller's `requestId`: one per user action,
+///   **reused** for a retry of the same action and by the replay, so an
+///   action is applied at most once. `label` is how a queued action is
+///   listed ("Payment ₹1,200.00 · Cement bags").
 abstract class TransactionRepository {
   const TransactionRepository();
 
   /// A fresh document id, available offline. A new draft gets one before it
-  /// is saved, so attachments can be uploaded under it.
+  /// is saved.
   String newTransactionId(String businessId);
 
   /// A live window of up to [limit] entries for [filter]: an indexed query
@@ -86,7 +89,7 @@ abstract class TransactionRepository {
     required String date,
   });
 
-  Future<AppResult<ConfirmResult>> confirm(
+  Future<AppResult<ActionOutcome<ConfirmResult>>> confirm(
     String businessId,
     String transactionId, {
     required String requestId,
@@ -94,27 +97,30 @@ abstract class TransactionRepository {
     bool settleNow = false,
     String? settleDate,
     String? settleMethod,
+    String label = '',
   });
 
   /// [changes] holds only the keys that changed (see
   /// `TransactionDraft.changesFrom`).
-  Future<AppResult<MutationResult>> editConfirmed(
+  Future<AppResult<ActionOutcome<MutationResult>>> editConfirmed(
     String businessId,
     String transactionId, {
     required String requestId,
     required int expectedVersion,
     required Map<String, Object?> changes,
+    String label = '',
   });
 
-  Future<AppResult<MutationResult>> cancel(
+  Future<AppResult<ActionOutcome<MutationResult>>> cancel(
     String businessId,
     String transactionId, {
     required String requestId,
     int? expectedVersion,
     String? reason,
+    String label = '',
   });
 
-  Future<AppResult<SettlementResult>> recordSettlement(
+  Future<AppResult<ActionOutcome<SettlementResult>>> recordSettlement(
     String businessId,
     String transactionId, {
     required String requestId,
@@ -124,16 +130,10 @@ abstract class TransactionRepository {
     String? method,
     String? note,
     int? expectedVersion,
+    String label = '',
   });
 
-  /// Uploads to `businesses/{bid}/attachments/{tid}/{file}` and returns the
-  /// storage path. Needs a connection.
-  Future<AppResult<String>> uploadAttachment(
-    String businessId,
-    String transactionId,
-    PickedAttachment file,
-  );
-
-  /// The bytes of a stored attachment, for preview.
-  Future<AppResult<Uint8List>> downloadAttachment(String path);
+  /// The signed-in user's queued actions for this business (oldest first),
+  /// live: what the outbox still has to send.
+  Stream<List<OutboxEntry>> watchQueued(String businessId);
 }

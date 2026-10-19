@@ -4,11 +4,12 @@ import 'package:bloc/bloc.dart';
 import 'package:business_ledger/core/bloc/status.dart';
 import 'package:business_ledger/core/domain/app_exception.dart';
 import 'package:business_ledger/core/domain/app_result.dart';
-import 'package:business_ledger/core/firebase/connectivity_service.dart';
 import 'package:business_ledger/core/ledger/ledger_enums.dart';
 import 'package:business_ledger/core/ledger/ledger_math.dart';
 import 'package:business_ledger/core/money/currency.dart';
 import 'package:business_ledger/core/money/money.dart';
+import 'package:business_ledger/core/sync/action_outcome.dart';
+import 'package:business_ledger/core/sync/cloud_availability.dart';
 import 'package:business_ledger/features/business/domain/const/role.dart';
 import 'package:business_ledger/features/business/domain/const/standard_field.dart';
 import 'package:business_ledger/features/categories/domain/models/category.dart';
@@ -22,6 +23,7 @@ import 'package:business_ledger/features/projects/domain/repository/project_repo
 import 'package:business_ledger/features/transactions/domain/models/ledger_dates.dart';
 import 'package:business_ledger/features/transactions/domain/models/ledger_transaction.dart';
 import 'package:business_ledger/features/transactions/domain/models/line_item.dart';
+import 'package:business_ledger/features/transactions/domain/models/queue_labels.dart';
 import 'package:business_ledger/features/transactions/domain/models/transaction_draft.dart';
 import 'package:business_ledger/features/transactions/domain/models/transaction_results.dart';
 import 'package:business_ledger/features/transactions/domain/repository/transaction_repository.dart';
@@ -34,12 +36,14 @@ part 'transaction_form_state.dart';
 /// Create or edit a transaction.
 ///
 /// * A new entry or a draft is saved straight to Firestore (works offline).
-/// * "Save & confirm" (admin+, online) saves the draft, waits for the server
-///   to have it, then calls `confirmTransaction`; "as paid" adds
-///   `settleNow`.
+/// * "Save & confirm" (admin+) saves the draft, waits for the server to
+///   have it, then calls `confirmTransaction`; "as paid" adds `settleNow`.
+///   Offline or with Cloud sync off the draft is saved locally and the
+///   confirm is queued ([TransactionFormOutcome.queued]); the sync engine
+///   sends the draft first.
 /// * A confirmed entry is changed through `editConfirmedTransaction` with
 ///   only the changed keys and the `expectedVersion` it was loaded at; a
-///   conflict asks the user to reload.
+///   conflict asks the user to reload. Offline it is queued the same way.
 ///
 /// No arithmetic happens here beyond `Money.lineAmount` (via [LineItem]) and
 /// `LedgerMath` checks.
@@ -63,7 +67,7 @@ class TransactionFormCubit extends Cubit<TransactionFormState> {
   final CustomFieldRepository _fields;
   final PartyRepository _parties;
   final ProjectRepository _projects;
-  final ConnectivityService _connectivity;
+  final CloudAvailability _connectivity;
   final RequestTracker _requests;
   final DateTime Function() _now;
 
@@ -419,51 +423,6 @@ class TransactionFormCubit extends Cubit<TransactionFormState> {
     _clearError('customFields.$fieldId');
   }
 
-  // --- Attachments -----------------------------------------------------------
-
-  Future<void> addAttachment(PickedAttachment file) async {
-    final businessId = state.businessId;
-    final draft = state.draft;
-    if (businessId == null || draft == null) return;
-    final blocked = state.attachBlockedReason;
-    final problem = switch (file) {
-      _ when blocked != null => blocked,
-      _ when !file.isAllowedType => 'Only images and PDFs can be attached.',
-      _ when file.isTooLarge => 'That file is larger than 10 MB.',
-      _ => null,
-    };
-    if (problem != null) {
-      emit(state.copyWith(uploadStatus: Status.failure(problem)));
-      return;
-    }
-    emit(state.copyWith(uploadStatus: const Status.loading()));
-    final result = await _repository.uploadAttachment(
-      businessId,
-      draft.id,
-      file,
-    );
-    if (isClosed) return;
-    switch (result) {
-      case Success(data: final path):
-        _update((d) => d.copyWith(attachments: [...d.attachments, path]));
-        emit(
-          state.copyWith(
-            uploadStatus: Status.success(message: '${file.name} attached.'),
-          ),
-        );
-      case Failure(:final error):
-        emit(state.copyWith(uploadStatus: Status.fromException(error)));
-    }
-  }
-
-  /// Drops the reference; the stored file stays (Storage has no rule for a
-  /// client to prove nothing else points at it).
-  void removeAttachment(String path) => _update(
-    (draft) => draft.copyWith(
-      attachments: [...draft.attachments]..remove(path),
-    ),
-  );
-
   // --- Validation ------------------------------------------------------------
 
   /// Field errors for the current draft. [forConfirm] adds everything the
@@ -619,7 +578,7 @@ class TransactionFormCubit extends Cubit<TransactionFormState> {
             saveStatus: Status.success(
               message: state.online
                   ? 'Draft saved.'
-                  : "Draft saved. It will sync when you're back online.",
+                  : 'Draft saved on this device. It will sync later.',
             ),
           ),
         );
@@ -648,8 +607,15 @@ class TransactionFormCubit extends Cubit<TransactionFormState> {
     final isRetry = _requests.isPending(key) && _lastConfirmAttempt == draft;
     if (!isRetry) {
       // The server confirms what is stored, so it must have this version.
-      final saved = await _writeDraft(awaitServer: true);
+      // Offline the draft is saved locally instead and the confirm queued:
+      // the sync engine waits for the draft to reach the server first.
+      var saved = await _writeDraft(awaitServer: state.online);
       if (isClosed) return;
+      if (saved case Failure(:final error) when _mayWait(error)) {
+        // The connection dropped mid-save: keep it on the device.
+        saved = await _writeDraft(awaitServer: false);
+        if (isClosed) return;
+      }
       if (saved case Failure(:final error)) {
         _fail(error);
         return;
@@ -667,11 +633,27 @@ class TransactionFormCubit extends Cubit<TransactionFormState> {
       settleNow: settleNow,
       settleDate: settleNow ? draft.date : null,
       settleMethod: settleNow ? draft.paymentMethod : null,
+      label: QueueLabels.confirm(
+        draft.total,
+        state.currency,
+        _titleOf(draft),
+        settleNow: settleNow,
+      ),
     );
     if (isClosed) return;
     _requests.settle(result.errorOrNull);
     switch (result) {
-      case Success(data: final ConfirmResult confirmed):
+      case Success(data: Queued()):
+        _lastConfirmAttempt = null;
+        emit(
+          state.copyWith(
+            outcome: () => TransactionFormOutcome.queued,
+            saveStatus: const Status.success(
+              message: QueueLabels.queuedMessage,
+            ),
+          ),
+        );
+      case Success(data: Applied(result: final ConfirmResult confirmed)):
         _lastConfirmAttempt = null;
         final paid = confirmed.settlementId != null;
         emit(
@@ -723,20 +705,42 @@ class TransactionFormCubit extends Cubit<TransactionFormState> {
       requestId: requestId,
       expectedVersion: original.version,
       changes: changes,
+      label: QueueLabels.edit(_titleOf(draft)),
     );
     if (isClosed) return;
     _requests.settle(result.errorOrNull);
     switch (result) {
-      case Success():
+      case Success(:final data):
         emit(
           state.copyWith(
             outcome: () => TransactionFormOutcome.edited,
-            saveStatus: const Status.success(message: 'Changes saved.'),
+            saveStatus: Status.success(
+              message: data.isQueued
+                  ? QueueLabels.queuedMessage
+                  : 'Changes saved.',
+            ),
           ),
         );
       case Failure(:final error):
         _fail(error);
     }
+  }
+
+  /// The connection, not the content: worth keeping the work locally.
+  static bool _mayWait(AppException error) =>
+      error.kind == AppErrorKind.offline || error.kind == AppErrorKind.timeout;
+
+  static String _titleOf(TransactionDraft draft) {
+    for (final candidate in [
+      draft.description,
+      draft.partyName,
+      draft.categoryName,
+    ]) {
+      if (candidate != null && candidate.trim().isNotEmpty) {
+        return candidate.trim();
+      }
+    }
+    return draft.type.label;
   }
 
   @override

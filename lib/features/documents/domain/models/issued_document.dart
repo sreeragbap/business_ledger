@@ -16,7 +16,6 @@ class IssuedDocument extends Equatable {
     this.issuedAt,
     this.issuedBy,
     this.voided = false,
-    this.storagePath,
   });
 
   factory IssuedDocument.fromMap(String id, Map<String, dynamic> map) {
@@ -36,7 +35,6 @@ class IssuedDocument extends Equatable {
       issuedAt: json.timestamp('issuedAt'),
       issuedBy: json.optionalString('issuedBy'),
       voided: json.boolean('voided'),
-      storagePath: json.optionalString('storagePath'),
     );
   }
 
@@ -65,11 +63,6 @@ class IssuedDocument extends Equatable {
   /// with a VOID watermark.
   final bool voided;
 
-  /// Where the uploaded PDF lives, once one has been attached.
-  final String? storagePath;
-
-  bool get isUploaded => storagePath != null && storagePath!.isNotEmpty;
-
   /// A file name that is safe on every platform: `INV-2026-0001.pdf`.
   String get fileName =>
       '${number.replaceAll(RegExp('[^A-Za-z0-9_-]'), '_')}.pdf';
@@ -85,7 +78,6 @@ class IssuedDocument extends Equatable {
     issuedAt,
     issuedBy,
     voided,
-    storagePath,
   ];
 }
 

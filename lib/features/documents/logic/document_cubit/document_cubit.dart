@@ -16,7 +16,8 @@ import 'package:injectable/injectable.dart';
 
 part 'document_state.dart';
 
-/// Issue → render → preview, then share, print/save or upload.
+/// Issue → render → preview, then share or print/save. The PDF is rendered
+/// on the device from the stored snapshot each time; it is never stored.
 ///
 /// Issuing needs a connection (it allocates a gap-free number on the
 /// server); rendering an already issued document works offline from its
@@ -147,7 +148,6 @@ class DocumentCubit extends Cubit<DocumentState> {
         renderStatus: const Status.loading(),
         shareStatus: const Status.initial(),
         printStatus: const Status.initial(),
-        uploadStatus: const Status.initial(),
       ),
     );
     try {
@@ -196,49 +196,6 @@ class DocumentCubit extends Cubit<DocumentState> {
         ),
       );
     }
-  }
-
-  /// Stores the rendered PDF with the document, so other members (and other
-  /// devices) can download exactly what was sent.
-  Future<void> upload() async {
-    final (businessId, document, pdf) = (
-      state.businessId,
-      state.document,
-      state.pdf,
-    );
-    if (businessId == null ||
-        document == null ||
-        pdf == null ||
-        state.uploadStatus.isLoading) {
-      return;
-    }
-    emit(state.copyWith(uploadStatus: const Status.loading()));
-    final result = await _repository.attachPdf(
-      businessId: businessId,
-      document: document,
-      bytes: pdf,
-    );
-    result.when(
-      success: (path) => emit(
-        state.copyWith(
-          document: IssuedDocument(
-            id: document.id,
-            type: document.type,
-            number: document.number,
-            transactionId: document.transactionId,
-            settlementId: document.settlementId,
-            snapshot: document.snapshot,
-            issuedAt: document.issuedAt,
-            issuedBy: document.issuedBy,
-            voided: document.voided,
-            storagePath: path,
-          ),
-          uploadStatus: const Status.success(message: 'PDF saved online.'),
-        ),
-      ),
-      failure: (error) =>
-          emit(state.copyWith(uploadStatus: Status.fromException(error))),
-    );
   }
 
   static bool _mayHaveLanded(AppException error) =>

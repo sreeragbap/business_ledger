@@ -79,7 +79,6 @@ export async function draft(
     totalMinor: 10000,
     lineItems: [],
     customFields: {},
-    attachments: [],
     createdBy,
     version: 0,
     ...fields,

@@ -204,6 +204,7 @@ class _Body extends StatelessWidget {
                             transaction: transaction,
                             currency: currency,
                             today: state.today,
+                            syncMark: state.syncMarkOf(transaction.id),
                             heroEnabled: heroEnabled,
                             onTap: () => onOpen(transaction),
                           ),

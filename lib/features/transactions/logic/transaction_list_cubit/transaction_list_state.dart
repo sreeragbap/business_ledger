@@ -27,6 +27,7 @@ class TransactionListState extends Equatable {
     this.parties = const [],
     this.projects = const [],
     this.today = '',
+    this.syncMarks = const {},
   });
 
   final String? businessId;
@@ -54,6 +55,12 @@ class TransactionListState extends Equatable {
 
   /// `yyyy-MM-dd`, for overdue.
   final String today;
+
+  /// Transactions with actions still in the outbox, by id.
+  final Map<String, SyncMark> syncMarks;
+
+  SyncMark syncMarkOf(String transactionId) =>
+      syncMarks[transactionId] ?? SyncMark.none;
 
   /// Entries under date headings, newest or oldest first as sorted. An
   /// amount sort has no date grouping.
@@ -114,6 +121,7 @@ class TransactionListState extends Equatable {
     List<Party>? parties,
     List<Project>? projects,
     String? today,
+    Map<String, SyncMark>? syncMarks,
   }) => TransactionListState(
     businessId: businessId,
     filter: filter ?? this.filter,
@@ -129,6 +137,7 @@ class TransactionListState extends Equatable {
     parties: parties ?? this.parties,
     projects: projects ?? this.projects,
     today: today ?? this.today,
+    syncMarks: syncMarks ?? this.syncMarks,
   );
 
   @override
@@ -147,5 +156,6 @@ class TransactionListState extends Equatable {
     parties,
     projects,
     today,
+    syncMarks,
   ];
 }

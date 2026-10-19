@@ -70,7 +70,6 @@ export const editConfirmed = z.object({
     lineItems: z.array(lineItem).max(200).optional(),
     totalMinor: minor.optional(),
     customFields: z.record(z.string(), z.unknown()).optional(),
-    attachments: z.array(z.string().max(512)).max(20).optional(),
   }).strict(),
 });
 

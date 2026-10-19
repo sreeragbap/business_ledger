@@ -19,10 +19,6 @@ class _StubDocumentRepository extends DocumentRepository {
   final List<String> issueRequestIds = [];
   final List<AppResult<IssueResult>> issueResults = [];
   AppResult<IssuedDocument> getResult = Success(invoice());
-  AppResult<String> attachResult = const Success(
-    'businesses/b1/documents/invoice-tx1-main.pdf',
-  );
-  int attachCalls = 0;
   final StreamController<AppResult<List<IssuedDocument>>> watched =
       StreamController.broadcast();
 
@@ -49,16 +45,6 @@ class _StubDocumentRepository extends DocumentRepository {
     String businessId,
     String documentId,
   ) async => getResult;
-
-  @override
-  Future<AppResult<String>> attachPdf({
-    required String businessId,
-    required IssuedDocument document,
-    required Uint8List bytes,
-  }) async {
-    attachCalls++;
-    return attachResult;
-  }
 }
 
 class _StubRenderer extends DocumentRenderer {
@@ -245,35 +231,6 @@ void main() {
       build: build,
       act: (cubit) => cubit.share(),
       expect: () => const <DocumentState>[],
-    );
-
-    blocTest<DocumentCubit, DocumentState>(
-      'upload records the storage path',
-      build: build,
-      act: (cubit) async {
-        await cubit.openById('b1', 'invoice-tx1-main');
-        await cubit.upload();
-      },
-      verify: (cubit) {
-        expect(repository.attachCalls, 1);
-        expect(cubit.state.uploadStatus.isSuccess, isTrue);
-        expect(cubit.state.document?.isUploaded, isTrue);
-      },
-    );
-
-    blocTest<DocumentCubit, DocumentState>(
-      'upload offline fails without losing the preview',
-      setUp: () =>
-          repository.attachResult = const Failure(AppException.offline()),
-      build: build,
-      act: (cubit) async {
-        await cubit.openById('b1', 'invoice-tx1-main');
-        await cubit.upload();
-      },
-      verify: (cubit) {
-        expect(cubit.state.uploadStatus.error?.isOffline, isTrue);
-        expect(cubit.state.pdf, isNotNull);
-      },
     );
   });
 

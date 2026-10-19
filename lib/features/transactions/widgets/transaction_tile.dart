@@ -1,10 +1,12 @@
 import 'package:business_ledger/core/ledger/ledger_enums.dart';
 import 'package:business_ledger/core/money/currency.dart';
 import 'package:business_ledger/core/money/money.dart';
+import 'package:business_ledger/core/sync/outbox_entry.dart';
 import 'package:business_ledger/core/theme/app_colors.dart';
 import 'package:business_ledger/core/theme/app_radius.dart';
 import 'package:business_ledger/core/theme/app_spacing.dart';
 import 'package:business_ledger/core/theme/app_text_styles.dart';
+import 'package:business_ledger/core/widgets/pending_sync_badge.dart';
 import 'package:business_ledger/features/transactions/domain/models/ledger_dates.dart';
 import 'package:business_ledger/features/transactions/domain/models/ledger_transaction.dart';
 import 'package:business_ledger/features/transactions/widgets/transaction_status_chip.dart';
@@ -41,6 +43,7 @@ class TransactionTile extends StatelessWidget {
     required this.today,
     this.onTap,
     this.heroEnabled = true,
+    this.syncMark = SyncMark.none,
     super.key,
   });
 
@@ -49,6 +52,9 @@ class TransactionTile extends StatelessWidget {
   final String today;
   final VoidCallback? onTap;
   final bool heroEnabled;
+
+  /// Actions on this entry still waiting in the outbox.
+  final SyncMark syncMark;
 
   @override
   Widget build(BuildContext context) {
@@ -103,7 +109,10 @@ class TransactionTile extends StatelessWidget {
         amount,
         status,
         if (date.isNotEmpty) date,
-        if (tx.hasPendingWrites) 'waiting to sync',
+        if (syncMark == SyncMark.failed)
+          'a queued action needs attention'
+        else if (syncMark == SyncMark.pending || tx.hasPendingWrites)
+          'waiting to sync',
       ].join(', '),
       excludeSemantics: true,
       child: InkWell(
@@ -139,7 +148,13 @@ class TransactionTile extends StatelessWidget {
                       SizedBox(height: AppSpacing.xxs.h),
                       Row(
                         children: [
-                          if (tx.hasPendingWrites) ...[
+                          if (syncMark != SyncMark.none) ...[
+                            Flexible(
+                              flex: 2,
+                              child: PendingSyncBadge(mark: syncMark),
+                            ),
+                            SizedBox(width: AppSpacing.xs.w),
+                          ] else if (tx.hasPendingWrites) ...[
                             Icon(
                               Icons.cloud_upload_outlined,
                               size: 13.r,
@@ -148,6 +163,7 @@ class TransactionTile extends StatelessWidget {
                             SizedBox(width: AppSpacing.xs.w),
                           ],
                           Expanded(
+                            flex: 3,
                             child: Text(
                               meta,
                               maxLines: 1,

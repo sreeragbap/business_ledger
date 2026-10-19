@@ -4,15 +4,20 @@ import 'package:bloc/bloc.dart';
 import 'package:business_ledger/core/bloc/status.dart';
 import 'package:business_ledger/core/domain/app_exception.dart';
 import 'package:business_ledger/core/domain/app_result.dart';
-import 'package:business_ledger/core/firebase/connectivity_service.dart';
 import 'package:business_ledger/core/ledger/ledger_enums.dart';
 import 'package:business_ledger/core/ledger/ledger_math.dart';
+import 'package:business_ledger/core/money/currency.dart';
+import 'package:business_ledger/core/sync/action_outcome.dart';
+import 'package:business_ledger/core/sync/cloud_availability.dart';
+import 'package:business_ledger/core/sync/outbox_entry.dart';
 import 'package:business_ledger/features/business/domain/const/role.dart';
 import 'package:business_ledger/features/categories/domain/models/custom_field.dart';
 import 'package:business_ledger/features/categories/domain/repository/custom_field_repository.dart';
 import 'package:business_ledger/features/transactions/domain/models/audit_entry.dart';
 import 'package:business_ledger/features/transactions/domain/models/ledger_dates.dart';
 import 'package:business_ledger/features/transactions/domain/models/ledger_transaction.dart';
+import 'package:business_ledger/features/transactions/domain/models/pending_settlements.dart';
+import 'package:business_ledger/features/transactions/domain/models/queue_labels.dart';
 import 'package:business_ledger/features/transactions/domain/models/settlement.dart';
 import 'package:business_ledger/features/transactions/domain/models/settlement_rules.dart';
 import 'package:business_ledger/features/transactions/domain/repository/transaction_repository.dart';
@@ -30,6 +35,10 @@ part 'transaction_detail_state.dart';
 /// answers what is possible ([TransactionDetailState.kindUnavailableReason],
 /// [settlementViolation], [previewSettlement]) with `LedgerMath`, before
 /// anything reaches the server.
+///
+/// Money actions work offline and with Cloud sync off: they are queued and
+/// listed under the balance ([TransactionDetailState.queued]) until the
+/// server applies them. The balance shown is always the server's.
 @injectable
 class TransactionDetailCubit extends Cubit<TransactionDetailState> {
   TransactionDetailCubit(
@@ -44,19 +53,22 @@ class TransactionDetailCubit extends Cubit<TransactionDetailState> {
 
   final TransactionRepository _repository;
   final CustomFieldRepository _fields;
-  final ConnectivityService _connectivity;
+  final CloudAvailability _connectivity;
   final RequestTracker _requests;
   final DateTime Function() _now;
 
   final List<StreamSubscription<Object?>> _subscriptions = [];
   StreamSubscription<Object?>? _audit;
+  Currency _currency = Currency.inr;
 
   Future<void> start({
     required String businessId,
     required String transactionId,
     required Role role,
+    Currency currency = Currency.inr,
   }) async {
     await _cancelAll();
+    _currency = currency;
     emit(
       TransactionDetailState(
         businessId: businessId,
@@ -96,6 +108,15 @@ class TransactionDetailCubit extends Cubit<TransactionDetailState> {
           if (result case Success(:final data)) {
             emit(state.copyWith(linked: data));
           }
+        }),
+      )
+      ..add(
+        _repository.watchQueued(businessId).listen((entries) {
+          final mine = [
+            for (final entry in entries)
+              if (entry.transactionId == transactionId) entry,
+          ];
+          if (!isClosed) emit(state.copyWith(queued: mine));
         }),
       )
       ..add(
@@ -183,19 +204,20 @@ class TransactionDetailCubit extends Cubit<TransactionDetailState> {
 
   // --- Settlement checks (no server call) -----------------------------------
 
-  /// Why [amount] of [kind] would be refused, per `LedgerMath`.
+  /// Why [amount] of [kind] would be refused, per `LedgerMath`, counting
+  /// the settlements already queued for this transaction.
   LedgerViolation? settlementViolation(SettlementKind kind, int amount) {
     final tx = state.transaction;
     if (tx == null) return LedgerViolation.notConfirmed;
-    return tx.checkSettlement(kind, amount);
+    return tx.checkSettlement(kind, amount, pending: state.pending);
   }
 
-  /// The balance after [amount] of [kind], or `null` when it would be
-  /// refused.
+  /// The balance after the queued actions and [amount] of [kind], or
+  /// `null` when it would be refused.
   Balance? previewSettlement(SettlementKind kind, int amount) {
     final tx = state.transaction;
     if (tx == null || settlementViolation(kind, amount) != null) return null;
-    return tx.previewSettlement(kind, amount);
+    return tx.previewSettlement(kind, amount, pending: state.pending);
   }
 
   // --- Actions ---------------------------------------------------------------
@@ -250,6 +272,12 @@ class TransactionDetailCubit extends Cubit<TransactionDetailState> {
       settleNow: settleNow,
       settleDate: settleNow ? tx.date : null,
       settleMethod: settleNow ? tx.paymentMethod : null,
+      label: QueueLabels.confirm(
+        tx.totalMinor,
+        _currency,
+        tx.title,
+        settleNow: settleNow,
+      ),
     );
     _finish(
       result,
@@ -273,6 +301,7 @@ class TransactionDetailCubit extends Cubit<TransactionDetailState> {
       requestId: _requests.idFor('cancel:${tx.id}:${tx.version}'),
       expectedVersion: tx.version,
       reason: reason,
+      label: QueueLabels.cancel(tx.title),
     );
     _finish(
       result,
@@ -334,16 +363,25 @@ class TransactionDetailCubit extends Cubit<TransactionDetailState> {
     );
   }
 
+  /// A queued action is a success too: it is safe on the device and will be
+  /// applied (or flagged) when synced. Either way the outcome is known, so
+  /// the next tap is a new action with a new requestId.
   void _finish<T>(
-    AppResult<T> result, {
+    AppResult<ActionOutcome<T>> result, {
     required String Function(T data) success,
   }) {
     if (isClosed) return;
     _requests.settle(result.errorOrNull);
     emit(
       state.copyWith(
+        actionQueued: result.dataOrNull?.isQueued ?? false,
         actionStatus: result.when(
-          success: (data) => Status.success(message: success(data)),
+          success: (outcome) => Status.success(
+            message: switch (outcome) {
+              Applied(:final result) => success(result),
+              Queued() => QueueLabels.queuedMessage,
+            },
+          ),
           failure: Status.fromException,
         ),
       ),

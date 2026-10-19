@@ -15,7 +15,7 @@ labels: enhancement
 
 - [ ] Flutter app (`lib/`)
 - [ ] Cloud Functions (`functions/`)
-- [ ] Firestore / Storage rules
+- [ ] Firestore rules
 - [ ] Ledger rules (Dart + TypeScript + `shared/ledger_cases.json`)
 
 ## Alternatives considered

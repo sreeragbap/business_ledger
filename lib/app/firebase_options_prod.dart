@@ -66,9 +66,10 @@ class DefaultFirebaseOptions {
     messagingSenderId: '427969628316',
     projectId: 'busineedger-ab7a1',
     storageBucket: 'busineedger-ab7a1.firebasestorage.app',
-    androidClientId: '427969628316-tn578gvll7pjc1ou0qmp5ditu32r9710.apps.googleusercontent.com',
-    iosClientId: '427969628316-5cr1vuevknlicnlj7esepqjs8i8v214e.apps.googleusercontent.com',
+    androidClientId:
+        '427969628316-tn578gvll7pjc1ou0qmp5ditu32r9710.apps.googleusercontent.com',
+    iosClientId:
+        '427969628316-5cr1vuevknlicnlj7esepqjs8i8v214e.apps.googleusercontent.com',
     iosBundleId: 'com.iocod.businessLedger',
   );
-
 }

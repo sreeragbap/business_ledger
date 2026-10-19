@@ -31,11 +31,31 @@ Region `asia-south1`. Every call needs a signed-in user. Source:
 | `updateMemberRole` | businessId, uid, role (`owner` = transfer) | uid, role | admin |
 | `removeMember` | businessId, uid (self = leave) | uid | admin / self |
 | `confirmTransaction` | businessId, transactionId, requestId, expectedVersion?, settleNow?, settleDate?, settleMethod? | transactionId, version, paymentStatus, settlementId | admin |
-| `editConfirmedTransaction` | businessId, transactionId, requestId, expectedVersion, changes{description, reference, notes, paymentMethod, date, dueDate, categoryId, partyId, projectId, lineItems, totalMinor, customFields, attachments} | transactionId, version, paymentStatus | admin |
+| `editConfirmedTransaction` | businessId, transactionId, requestId, expectedVersion, changes{description, reference, notes, paymentMethod, date, dueDate, categoryId, partyId, projectId, lineItems, totalMinor, customFields} | transactionId, version, paymentStatus | admin |
 | `cancelTransaction` | businessId, transactionId, requestId, expectedVersion?, reason? | transactionId, version, voidedDocuments | admin |
 | `recordSettlement` | businessId, transactionId, requestId, kind (`payment`/`refund`/`credit`), amountMinor, date, method?, note?, expectedVersion? | settlementId (= requestId), linkedTransactionId, version, paymentStatus, outstandingMinor | admin |
 | `deleteCategory` | businessId, categoryId | categoryId | editor |
 | `issueDocument` | businessId, transactionId, settlementId? (receipts), type (`invoice`/`bill`/`receipt`), requestId | documentId, number, created | editor |
+
+## Offline replay
+
+`confirmTransaction`, `recordSettlement`, `editConfirmedTransaction` and
+`cancelTransaction` may be queued on the device (offline, or Cloud sync off)
+and sent later by the client's outbox (ARCHITECTURE §2, Offline behaviour):
+
+* the replay carries the **original `requestId`**, and only for the user who
+  queued it, so an action that already landed returns its stored result;
+* a replayed confirm / settle / cancel **omits `expectedVersion`**; a
+  replayed edit sends the edited version plus the number of earlier queued
+  actions on that transaction applied since (each bumps `version` by 1);
+* every ledger rule is checked again at replay time. Definitive refusals
+  (`invalid-argument`, `failed-precondition`, `permission-denied`,
+  `not-found`, `already-exists`, `aborted`, `unauthenticated`) are shown to
+  the user to retry or discard; `unavailable`, `deadline-exceeded`,
+  `internal` and `resource-exhausted` are retried with backoff.
+
+`createBusiness`, member calls, `deleteCategory` and `issueDocument` are
+never queued.
 
 ## Draft shape (written by the client, checked by rules)
 
@@ -43,7 +63,8 @@ Region `asia-south1`. Every call needs a signed-in user. Source:
 `version: 0`, and any of: `direction` (payment/adjustment), `categoryId`,
 `partyId`, `projectId`, `description`, `reference`, `notes`, `paymentMethod`,
 `date`, `dueDate`, `lineItems[]`, `totalMinor`, `customFields{}`,
-`attachments[]`, `searchTokens[]`. Never `paidMinor`/`refundedMinor`/
+`searchTokens[]`. No `attachments` (text only; a legacy key is tolerated,
+never written). Never `paidMinor`/`refundedMinor`/
 `creditedMinor`, `confirmed*`, `cancelled*` or link fields.
 
 ## Notes for running locally

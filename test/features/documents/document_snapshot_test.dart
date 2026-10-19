@@ -17,7 +17,6 @@ void main() {
         isTrue,
       );
       expect(doc.voided, isFalse);
-      expect(doc.isUploaded, isFalse);
       expect(doc.fileName, 'INV-2026-0007.pdf');
 
       final snapshot = doc.snapshot;

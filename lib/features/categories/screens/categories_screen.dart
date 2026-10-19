@@ -19,6 +19,7 @@ import 'package:business_ledger/features/categories/domain/models/category.dart'
 import 'package:business_ledger/features/categories/logic/categories_cubit/categories_cubit.dart';
 import 'package:business_ledger/features/categories/widgets/category_form_sheet.dart';
 import 'package:business_ledger/features/categories/widgets/category_icon_badge.dart';
+import 'package:business_ledger/features/sync/widgets/cloud_required.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
@@ -344,6 +345,7 @@ class _Menu extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final reachable = CloudRequired.watch(context);
     return PopupMenuButton<_CategoryMenu>(
       tooltip: 'Category actions',
       onSelected: (choice) => unawaited(_onSelected(context, choice)),
@@ -359,9 +361,13 @@ class _Menu extends StatelessWidget {
             value: _CategoryMenu.archive,
             child: Text('Archive'),
           ),
-        const PopupMenuItem(
+        PopupMenuItem(
           value: _CategoryMenu.delete,
-          child: Text('Delete', style: TextStyle(color: AppColors.error)),
+          // Proving nothing uses it is the server's job: never queued.
+          enabled: reachable,
+          child: reachable
+              ? const Text('Delete', style: TextStyle(color: AppColors.error))
+              : const Text('Delete · ${CloudRequired.reason}'),
         ),
       ],
     );

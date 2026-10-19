@@ -76,7 +76,7 @@ class DocumentAction extends Equatable {
   final String subtitle;
 
   /// The document already issued for this action, if any. Opening it works
-  /// offline; issuing does not.
+  /// offline; issuing does not (it is never queued).
   final IssuedDocument? existing;
 
   /// Why the action cannot be taken. `null` when it can.
@@ -104,8 +104,11 @@ abstract final class DocumentActions {
       'Confirm the transaction before issuing a document.';
   static const String cancelledReason =
       'Cancelled transactions cannot issue documents.';
+
+  /// Offline, or Cloud sync off: numbering must come from the server.
   static const String offlineReason =
-      "You're offline. Issuing a document needs a connection.";
+      'Needs a connection and sync turned on. Issuing a document takes the '
+      'next number from the server.';
   static const String noDocumentReason =
       "This type of transaction doesn't have an invoice or bill.";
 

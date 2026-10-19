@@ -1,5 +1,3 @@
-import 'dart:typed_data';
-
 import 'package:business_ledger/core/domain/app_result.dart';
 import 'package:business_ledger/core/ledger/ledger_enums.dart';
 import 'package:business_ledger/features/documents/domain/models/issued_document.dart';
@@ -30,13 +28,4 @@ abstract class DocumentRepository {
   );
 
   Future<AppResult<IssuedDocument>> get(String businessId, String documentId);
-
-  /// Uploads [bytes] to `businesses/{bid}/documents/{docId}.pdf` and records
-  /// the path on the document. Returns the storage path. A document that
-  /// already has one is returned as is: storage rules forbid overwriting.
-  Future<AppResult<String>> attachPdf({
-    required String businessId,
-    required IssuedDocument document,
-    required Uint8List bytes,
-  });
 }

@@ -4,7 +4,6 @@ import 'package:business_ledger/app/app_config.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:firebase_storage/firebase_storage.dart';
 
 /// One-time SDK configuration, run by `bootstrap()` after
 /// `Firebase.initializeApp` and before anything reads an instance.
@@ -40,11 +39,6 @@ abstract final class FirebaseSetup {
     ).useFunctionsEmulator(
       host,
       AppConfig.functionsEmulatorPort,
-      automaticHostMapping: false,
-    );
-    await FirebaseStorage.instance.useStorageEmulator(
-      host,
-      AppConfig.storageEmulatorPort,
       automaticHostMapping: false,
     );
   }

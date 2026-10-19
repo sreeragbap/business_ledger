@@ -82,8 +82,4 @@ class FirestoreRefs {
   CollectionRef stats(String businessId) =>
       business(businessId).collection(statsPath);
   DocRef statsDay(String businessId, String day) => stats(businessId).doc(day);
-
-  /// Storage path prefix for a business's files; mirrors `storage.rules`.
-  static String storagePrefix(String businessId) =>
-      '$businessesPath/$businessId';
 }
