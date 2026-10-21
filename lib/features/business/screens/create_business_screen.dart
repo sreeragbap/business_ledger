@@ -5,6 +5,7 @@ import 'package:business_ledger/core/di/injection.dart';
 import 'package:business_ledger/core/money/currency.dart';
 import 'package:business_ledger/core/theme/app_spacing.dart';
 import 'package:business_ledger/core/widgets/app_button.dart';
+import 'package:business_ledger/core/widgets/app_discard_guard.dart';
 import 'package:business_ledger/core/widgets/app_section.dart';
 import 'package:business_ledger/core/widgets/app_snack_bar.dart';
 import 'package:business_ledger/core/widgets/app_text_field.dart';
@@ -39,6 +40,25 @@ class CreateBusinessScreen extends StatefulWidget implements AutoRouteWrapper {
 class _CreateBusinessScreenState extends State<CreateBusinessScreen> {
   final _name = TextEditingController();
   final _description = TextEditingController();
+
+  /// The choices as the form opened, to tell whether anything changed.
+  late final CreateBusinessState _initial;
+
+  @override
+  void initState() {
+    super.initState();
+    _initial = context.read<CreateBusinessCubit>().state;
+  }
+
+  /// Something typed or chosen that leaving would throw away. Not once
+  /// created: the screen then hands over to the new business.
+  bool _hasChanges(CreateBusinessState state) =>
+      state.createdBusinessId == null &&
+      (_name.text.trim().isNotEmpty ||
+          _description.text.trim().isNotEmpty ||
+          state.currency != _initial.currency ||
+          state.timezone != _initial.timezone ||
+          state.template != _initial.template);
 
   @override
   void dispose() {
@@ -80,100 +100,114 @@ class _CreateBusinessScreenState extends State<CreateBusinessScreen> {
     return BlocListener<CreateBusinessCubit, CreateBusinessState>(
       listenWhen: (p, c) => p.submitStatus != c.submitStatus,
       listener: _onState,
-      child: Scaffold(
-        appBar: AppBar(title: const Text('New business')),
-        body: BlocBuilder<CreateBusinessCubit, CreateBusinessState>(
-          builder: (context, state) {
-            final cubit = context.read<CreateBusinessCubit>();
-            final loading = state.submitStatus.isLoading;
-            return ListView(
-              padding: EdgeInsets.fromLTRB(
-                AppSpacing.screenHorizontal.w,
-                AppSpacing.sm.h,
-                AppSpacing.screenHorizontal.w,
-                AppSpacing.huge.h,
+      // Rebuilds the guard on typing and on every choice.
+      child: ListenableBuilder(
+        listenable: Listenable.merge([_name, _description]),
+        builder: (context, child) =>
+            BlocBuilder<CreateBusinessCubit, CreateBusinessState>(
+              builder: (context, state) => AppDiscardGuard(
+                hasChanges: _hasChanges(state),
+                hasChangesNow: () =>
+                    _hasChanges(context.read<CreateBusinessCubit>().state),
+                title: 'Discard this business?',
+                child: child!,
               ),
-              children: [
-                AppTextField(
-                  controller: _name,
-                  label: 'Business name',
-                  hint: 'e.g. Rao Constructions',
-                  textCapitalization: TextCapitalization.words,
-                  textInputAction: TextInputAction.next,
-                  maxLength: CreateBusinessCubit.maxNameLength,
-                  enabled: !loading,
-                  errorText: state.submitStatus.errorFor('name'),
+            ),
+        child: Scaffold(
+          appBar: AppBar(title: const Text('New business')),
+          body: BlocBuilder<CreateBusinessCubit, CreateBusinessState>(
+            builder: (context, state) {
+              final cubit = context.read<CreateBusinessCubit>();
+              final loading = state.submitStatus.isLoading;
+              return ListView(
+                padding: EdgeInsets.fromLTRB(
+                  AppSpacing.screenHorizontal.w,
+                  AppSpacing.sm.h,
+                  AppSpacing.screenHorizontal.w,
+                  AppSpacing.huge.h,
                 ),
-                SizedBox(height: AppSpacing.lg.h),
-                AppTextField(
-                  controller: _description,
-                  label: 'Description (optional)',
-                  hint: 'What the business does',
-                  textCapitalization: TextCapitalization.sentences,
-                  maxLines: 2,
-                  maxLength: 200,
-                  enabled: !loading,
-                ),
-                SizedBox(height: AppSpacing.xxl.h),
-                const AppSectionLabel('Currency'),
-                Wrap(
-                  spacing: AppSpacing.sm.w,
-                  runSpacing: AppSpacing.sm.h,
-                  children: [
-                    for (final currency in Currency.supported)
-                      ChoiceChip(
-                        label: Text(
-                          '${currency.code} ${currency.symbol.trim()}',
+                children: [
+                  AppTextField(
+                    controller: _name,
+                    label: 'Business name',
+                    hint: 'e.g. Rao Constructions',
+                    textCapitalization: TextCapitalization.words,
+                    textInputAction: TextInputAction.next,
+                    maxLength: CreateBusinessCubit.maxNameLength,
+                    enabled: !loading,
+                    errorText: state.submitStatus.errorFor('name'),
+                  ),
+                  SizedBox(height: AppSpacing.lg.h),
+                  AppTextField(
+                    controller: _description,
+                    label: 'Description (optional)',
+                    hint: 'What the business does',
+                    textCapitalization: TextCapitalization.sentences,
+                    maxLines: 2,
+                    maxLength: 200,
+                    enabled: !loading,
+                  ),
+                  SizedBox(height: AppSpacing.xxl.h),
+                  const AppSectionLabel('Currency'),
+                  Wrap(
+                    spacing: AppSpacing.sm.w,
+                    runSpacing: AppSpacing.sm.h,
+                    children: [
+                      for (final currency in Currency.supported)
+                        ChoiceChip(
+                          label: Text(
+                            '${currency.code} ${currency.symbol.trim()}',
+                          ),
+                          selected: currency == state.currency,
+                          onSelected: loading
+                              ? null
+                              : (_) => cubit.currencyChanged(currency),
                         ),
-                        selected: currency == state.currency,
-                        onSelected: loading
-                            ? null
-                            : (_) => cubit.currencyChanged(currency),
-                      ),
-                  ],
-                ),
-                SizedBox(height: AppSpacing.xs.h),
-                Text(
-                  'Fixed once the business is created: every amount is '
-                  'stored in this currency.',
-                  style: textTheme.bodySmall,
-                ),
-                SizedBox(height: AppSpacing.xxl.h),
-                const AppSectionLabel('Time zone'),
-                TimeZoneField(
-                  value: state.timezone,
-                  enabled: !loading,
-                  onChanged: cubit.timezoneChanged,
-                ),
-                SizedBox(height: AppSpacing.xxl.h),
-                const AppSectionLabel('Start from'),
-                for (final template in BusinessTemplate.values) ...[
-                  TemplateCard(
-                    template: template,
-                    selected: template == state.template,
-                    onTap: () {
-                      if (!loading) cubit.templateChanged(template);
-                    },
+                    ],
                   ),
-                  SizedBox(height: AppSpacing.md.h),
-                ],
-                SizedBox(height: AppSpacing.lg.h),
-                if (!reachable) ...[
+                  SizedBox(height: AppSpacing.xs.h),
                   Text(
-                    CloudRequired.reason,
-                    textAlign: TextAlign.center,
-                    style: Theme.of(context).textTheme.bodySmall,
+                    'Fixed once the business is created: every amount is '
+                    'stored in this currency.',
+                    style: textTheme.bodySmall,
                   ),
-                  SizedBox(height: AppSpacing.sm.h),
+                  SizedBox(height: AppSpacing.xxl.h),
+                  const AppSectionLabel('Time zone'),
+                  TimeZoneField(
+                    value: state.timezone,
+                    enabled: !loading,
+                    onChanged: cubit.timezoneChanged,
+                  ),
+                  SizedBox(height: AppSpacing.xxl.h),
+                  const AppSectionLabel('Start from'),
+                  for (final template in BusinessTemplate.values) ...[
+                    TemplateCard(
+                      template: template,
+                      selected: template == state.template,
+                      onTap: () {
+                        if (!loading) cubit.templateChanged(template);
+                      },
+                    ),
+                    SizedBox(height: AppSpacing.md.h),
+                  ],
+                  SizedBox(height: AppSpacing.lg.h),
+                  if (!reachable) ...[
+                    Text(
+                      CloudRequired.reason,
+                      textAlign: TextAlign.center,
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                    SizedBox(height: AppSpacing.sm.h),
+                  ],
+                  AppButton(
+                    label: 'Create business',
+                    isLoading: loading,
+                    onPressed: reachable ? _submit : null,
+                  ),
                 ],
-                AppButton(
-                  label: 'Create business',
-                  isLoading: loading,
-                  onPressed: reachable ? _submit : null,
-                ),
-              ],
-            );
-          },
+              );
+            },
+          ),
         ),
       ),
     );
