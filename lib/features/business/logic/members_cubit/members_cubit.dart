@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:bloc/bloc.dart';
+import 'package:business_ledger/core/bloc/close_guard.dart';
 import 'package:business_ledger/core/bloc/status.dart';
 import 'package:business_ledger/core/domain/app_result.dart';
 import 'package:business_ledger/features/business/domain/const/role.dart';
@@ -15,7 +16,7 @@ part 'members_state.dart';
 /// needs a connection (the RPC client refuses offline with a clear
 /// message), and the server's message is shown as is on failure.
 @injectable
-class MembersCubit extends Cubit<MembersState> {
+class MembersCubit extends Cubit<MembersState> with CloseGuard<MembersState> {
   MembersCubit(this._repository) : super(const MembersState());
 
   final MemberRepository _repository;
@@ -27,6 +28,7 @@ class MembersCubit extends Cubit<MembersState> {
   Future<void> watch(String businessId) async {
     _businessId = businessId;
     await _subscription?.cancel();
+    if (isClosing) return;
     emit(state.copyWith(loadStatus: const Status.loading()));
     _subscription = _repository.watchMembers(businessId).listen((result) {
       emit(
@@ -125,6 +127,7 @@ class MembersCubit extends Cubit<MembersState> {
 
   @override
   Future<void> close() async {
+    beginClose();
     await _subscription?.cancel();
     return super.close();
   }

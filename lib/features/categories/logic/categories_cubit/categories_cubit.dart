@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:bloc/bloc.dart';
+import 'package:business_ledger/core/bloc/close_guard.dart';
 import 'package:business_ledger/core/bloc/status.dart';
 import 'package:business_ledger/core/domain/app_exception.dart';
 import 'package:business_ledger/core/domain/app_result.dart';
@@ -21,7 +22,8 @@ part 'categories_state.dart';
 /// Reorders are applied to the state at once and written as one batch of
 /// only the changed `sortOrder`s; the listener then confirms them.
 @injectable
-class CategoriesCubit extends Cubit<CategoriesState> {
+class CategoriesCubit extends Cubit<CategoriesState>
+    with CloseGuard<CategoriesState> {
   CategoriesCubit(this._categories, this._fields)
     : super(const CategoriesState());
 
@@ -35,6 +37,7 @@ class CategoriesCubit extends Cubit<CategoriesState> {
     _businessId = businessId;
     await _categorySubscription?.cancel();
     await _fieldSubscription?.cancel();
+    if (isClosing) return;
     emit(state.copyWith(loadStatus: const Status.loading()));
     _categorySubscription = _categories
         .watchCategories(businessId)
@@ -201,6 +204,7 @@ class CategoriesCubit extends Cubit<CategoriesState> {
 
   @override
   Future<void> close() async {
+    beginClose();
     await _categorySubscription?.cancel();
     await _fieldSubscription?.cancel();
     return super.close();

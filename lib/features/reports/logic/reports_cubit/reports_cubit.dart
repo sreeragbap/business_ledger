@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:bloc/bloc.dart';
+import 'package:business_ledger/core/bloc/close_guard.dart';
 import 'package:business_ledger/core/bloc/status.dart';
 import 'package:business_ledger/core/domain/app_result.dart';
 import 'package:business_ledger/core/ledger/ledger_enums.dart';
@@ -25,7 +26,7 @@ part 'reports_state.dart';
 /// Only a range change queries again; granularity and scope recompute from
 /// the days already held.
 @injectable
-class ReportsCubit extends Cubit<ReportsState> {
+class ReportsCubit extends Cubit<ReportsState> with CloseGuard<ReportsState> {
   ReportsCubit(this._repository) : super(ReportsState.initial());
 
   final ReportsRepository _repository;
@@ -82,6 +83,7 @@ class ReportsCubit extends Cubit<ReportsState> {
     final businessId = state.businessId;
     if (businessId == null) return;
     await _stats?.cancel();
+    if (isClosing) return;
     final range = state.range;
     emit(state.copyWith(statsStatus: const Status.loading()));
     _stats = _repository
@@ -162,6 +164,7 @@ class ReportsCubit extends Cubit<ReportsState> {
 
   @override
   Future<void> close() async {
+    beginClose();
     await _stats?.cancel();
     return super.close();
   }

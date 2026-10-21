@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:bloc/bloc.dart';
+import 'package:business_ledger/core/bloc/close_guard.dart';
 import 'package:business_ledger/core/bloc/status.dart';
 import 'package:business_ledger/core/domain/app_result.dart';
 import 'package:business_ledger/core/ledger/ledger_enums.dart';
@@ -34,7 +35,8 @@ part 'settlement_form_state.dart';
 /// Settlements already queued for the transaction count against what is
 /// left (see `PendingSettlements`).
 @injectable
-class SettlementFormCubit extends Cubit<SettlementFormState> {
+class SettlementFormCubit extends Cubit<SettlementFormState>
+    with CloseGuard<SettlementFormState> {
   SettlementFormCubit(
     this._repository, {
     @ignoreParam String Function()? nextRequestId,
@@ -61,6 +63,7 @@ class SettlementFormCubit extends Cubit<SettlementFormState> {
   }) async {
     await _live?.cancel();
     await _queued?.cancel();
+    if (isClosing) return;
     _currency = currency;
     final pending = PendingSettlements.of(queued);
     final initialKind =
@@ -225,6 +228,7 @@ class SettlementFormCubit extends Cubit<SettlementFormState> {
 
   @override
   Future<void> close() async {
+    beginClose();
     await _live?.cancel();
     await _queued?.cancel();
     return super.close();

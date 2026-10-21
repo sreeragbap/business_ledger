@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:bloc/bloc.dart';
+import 'package:business_ledger/core/bloc/close_guard.dart';
 import 'package:business_ledger/core/bloc/status.dart';
 import 'package:business_ledger/core/domain/app_result.dart';
 import 'package:business_ledger/core/money/currency.dart';
@@ -21,7 +22,8 @@ part 'dashboard_state.dart';
 /// is owed each way, pending/overdue and recent entries. Live: every list
 /// follows its query on the on-device store.
 @injectable
-class DashboardCubit extends Cubit<DashboardState> {
+class DashboardCubit extends Cubit<DashboardState>
+    with CloseGuard<DashboardState> {
   DashboardCubit(this._repository) : super(DashboardState.initial());
 
   final ReportsRepository _repository;
@@ -55,6 +57,7 @@ class DashboardCubit extends Cubit<DashboardState> {
     );
 
     await _pending?.cancel();
+    if (isClosing) return;
     _pending = _repository
         .openTransactions(businessId, limit: pendingLimit)
         .listen(
@@ -72,6 +75,7 @@ class DashboardCubit extends Cubit<DashboardState> {
         );
 
     await _recent?.cancel();
+    if (isClosing) return;
     _recent = _repository
         .recentTransactions(businessId, limit: recentLimit)
         .listen(
@@ -132,6 +136,7 @@ class DashboardCubit extends Cubit<DashboardState> {
     final businessId = state.businessId;
     if (businessId == null) return;
     await _stats?.cancel();
+    if (isClosing) return;
     final range = state.range;
     emit(state.copyWith(statsStatus: const Status.loading()));
     _stats = _repository
@@ -157,6 +162,7 @@ class DashboardCubit extends Cubit<DashboardState> {
 
   @override
   Future<void> close() async {
+    beginClose();
     await Future.wait([
       ?_stats?.cancel(),
       ?_pending?.cancel(),

@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:bloc/bloc.dart';
+import 'package:business_ledger/core/bloc/close_guard.dart';
 import 'package:business_ledger/core/bloc/status.dart';
 import 'package:business_ledger/core/domain/app_result.dart';
 import 'package:business_ledger/features/projects/domain/models/project.dart';
@@ -12,7 +13,8 @@ part 'projects_state.dart';
 
 /// Projects: a live list filtered on the device, plus create/edit/archive.
 @injectable
-class ProjectsCubit extends Cubit<ProjectsState> {
+class ProjectsCubit extends Cubit<ProjectsState>
+    with CloseGuard<ProjectsState> {
   ProjectsCubit(this._repository) : super(const ProjectsState());
 
   final ProjectRepository _repository;
@@ -22,6 +24,7 @@ class ProjectsCubit extends Cubit<ProjectsState> {
   Future<void> watch(String businessId) async {
     _businessId = businessId;
     await _subscription?.cancel();
+    if (isClosing) return;
     emit(state.copyWith(loadStatus: const Status.loading()));
     _subscription = _repository
         .watchProjects(businessId)
@@ -123,6 +126,7 @@ class ProjectsCubit extends Cubit<ProjectsState> {
 
   @override
   Future<void> close() async {
+    beginClose();
     await _subscription?.cancel();
     return super.close();
   }

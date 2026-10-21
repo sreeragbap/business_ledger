@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:bloc/bloc.dart';
+import 'package:business_ledger/core/bloc/close_guard.dart';
 import 'package:business_ledger/core/bloc/status.dart';
 import 'package:business_ledger/core/domain/app_result.dart';
 import 'package:business_ledger/core/domain/sort_orders.dart';
@@ -13,7 +14,8 @@ part 'custom_fields_state.dart';
 
 /// The custom fields screen: live list, create/edit, reorder, archive.
 @injectable
-class CustomFieldsCubit extends Cubit<CustomFieldsState> {
+class CustomFieldsCubit extends Cubit<CustomFieldsState>
+    with CloseGuard<CustomFieldsState> {
   CustomFieldsCubit(this._repository) : super(const CustomFieldsState());
 
   final CustomFieldRepository _repository;
@@ -23,6 +25,7 @@ class CustomFieldsCubit extends Cubit<CustomFieldsState> {
   Future<void> watch(String businessId) async {
     _businessId = businessId;
     await _subscription?.cancel();
+    if (isClosing) return;
     emit(state.copyWith(loadStatus: const Status.loading()));
     _subscription = _repository
         .watchFields(businessId)
@@ -182,6 +185,7 @@ class CustomFieldsCubit extends Cubit<CustomFieldsState> {
 
   @override
   Future<void> close() async {
+    beginClose();
     await _subscription?.cancel();
     return super.close();
   }

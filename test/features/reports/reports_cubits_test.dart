@@ -52,6 +52,30 @@ void main() {
       },
     );
 
+    test('closing while a restart is resubscribing leaves no listener '
+        'and never emits after close', () async {
+      final cubit = DashboardCubit(repository);
+      await cubit.start(businessId: 'b1', currency: Currency.inr, now: now);
+
+      // The restart pauses on cancelling the old subscriptions; the screen
+      // closes in that gap (the Crashlytics "emit after close" crash).
+      final restart = cubit.start(
+        businessId: 'b2',
+        currency: Currency.inr,
+        now: now,
+      );
+      await cubit.close();
+      await restart;
+
+      expect(repository.stats.hasListener, isFalse);
+      expect(repository.open.hasListener, isFalse);
+      expect(repository.recent.hasListener, isFalse);
+      repository.stats.add(Success(octoberDays));
+      repository.open.add(const Success([overdueSale]));
+      await settle();
+      expect(cubit.isClosed, isTrue);
+    });
+
     blocTest<DashboardCubit, DashboardState>(
       'changing the preset re-queries the new range',
       build: () => DashboardCubit(repository),

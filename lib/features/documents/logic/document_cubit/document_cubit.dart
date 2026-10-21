@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:bloc/bloc.dart';
+import 'package:business_ledger/core/bloc/close_guard.dart';
 import 'package:business_ledger/core/bloc/status.dart';
 import 'package:business_ledger/core/domain/app_exception.dart';
 import 'package:business_ledger/core/domain/app_result.dart';
@@ -23,7 +24,8 @@ part 'document_state.dart';
 /// server); rendering an already issued document works offline from its
 /// cached snapshot.
 @injectable
-class DocumentCubit extends Cubit<DocumentState> {
+class DocumentCubit extends Cubit<DocumentState>
+    with CloseGuard<DocumentState> {
   DocumentCubit(
     this._repository,
     this._renderer,
@@ -47,6 +49,7 @@ class DocumentCubit extends Cubit<DocumentState> {
   /// Follows the documents issued for one transaction.
   Future<void> watchTransaction(String businessId, String transactionId) async {
     await _watch?.cancel();
+    if (isClosing) return;
     emit(
       state.copyWith(
         businessId: businessId,
@@ -213,6 +216,7 @@ class DocumentCubit extends Cubit<DocumentState> {
 
   @override
   Future<void> close() async {
+    beginClose();
     await _watch?.cancel();
     return super.close();
   }

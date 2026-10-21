@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:bloc/bloc.dart';
+import 'package:business_ledger/core/bloc/close_guard.dart';
 import 'package:business_ledger/core/bloc/status.dart';
 import 'package:business_ledger/core/domain/app_exception.dart';
 import 'package:business_ledger/core/domain/app_result.dart';
@@ -27,7 +28,8 @@ part 'business_scope_state.dart';
 /// The choice is remembered per user on the device and in
 /// `profiles.last_business_id`, so a restart (or another device) reopens it.
 @lazySingleton
-class BusinessScopeCubit extends Cubit<BusinessScopeState> {
+class BusinessScopeCubit extends Cubit<BusinessScopeState>
+    with CloseGuard<BusinessScopeState> {
   BusinessScopeCubit(this._businesses, this._members, this._auth)
     : super(const BusinessScopeState()) {
     _uid = _auth.currentUser?.uid;
@@ -69,6 +71,7 @@ class BusinessScopeCubit extends Cubit<BusinessScopeState> {
       return;
     }
     await _cancelStreams();
+    if (isClosing) return;
     emit(
       BusinessScopeState(status: ScopeStatus.loading, businessId: businessId),
     );
@@ -171,6 +174,7 @@ class BusinessScopeCubit extends Cubit<BusinessScopeState> {
 
   @override
   Future<void> close() async {
+    beginClose();
     await _authSubscription.cancel();
     await _cancelStreams();
     return super.close();

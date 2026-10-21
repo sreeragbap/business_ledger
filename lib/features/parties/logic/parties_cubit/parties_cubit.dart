@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:bloc/bloc.dart';
+import 'package:business_ledger/core/bloc/close_guard.dart';
 import 'package:business_ledger/core/bloc/status.dart';
 import 'package:business_ledger/core/domain/app_result.dart';
 import 'package:business_ledger/features/parties/domain/const/party_kind.dart';
@@ -14,7 +15,7 @@ part 'parties_state.dart';
 /// Customers and suppliers: a live list filtered on the device by search
 /// text, kind and archived, plus create/edit/archive.
 @injectable
-class PartiesCubit extends Cubit<PartiesState> {
+class PartiesCubit extends Cubit<PartiesState> with CloseGuard<PartiesState> {
   PartiesCubit(this._repository) : super(const PartiesState());
 
   final PartyRepository _repository;
@@ -26,6 +27,7 @@ class PartiesCubit extends Cubit<PartiesState> {
   Future<void> watch(String businessId) async {
     _businessId = businessId;
     await _subscription?.cancel();
+    if (isClosing) return;
     emit(state.copyWith(loadStatus: const Status.loading()));
     _subscription = _repository
         .watchParties(businessId)
@@ -134,6 +136,7 @@ class PartiesCubit extends Cubit<PartiesState> {
 
   @override
   Future<void> close() async {
+    beginClose();
     await _subscription?.cancel();
     return super.close();
   }

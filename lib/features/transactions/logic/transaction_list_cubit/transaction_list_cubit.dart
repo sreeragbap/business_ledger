@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:bloc/bloc.dart';
+import 'package:business_ledger/core/bloc/close_guard.dart';
 import 'package:business_ledger/core/bloc/status.dart';
 import 'package:business_ledger/core/domain/app_result.dart';
 import 'package:business_ledger/core/ledger/ledger_enums.dart';
@@ -26,7 +27,8 @@ part 'transaction_list_state.dart';
 /// time, with debounced search. Categories, parties and projects are
 /// watched alongside for the filter sheets and chip labels.
 @injectable
-class TransactionListCubit extends Cubit<TransactionListState> {
+class TransactionListCubit extends Cubit<TransactionListState>
+    with CloseGuard<TransactionListState> {
   TransactionListCubit(
     this._repository,
     this._categories,
@@ -106,6 +108,7 @@ class TransactionListCubit extends Cubit<TransactionListState> {
     final businessId = state.businessId;
     if (businessId == null) return;
     await _page?.cancel();
+    if (isClosing) return;
     final today = LedgerDates.today(_now());
     if (today != state.today) emit(state.copyWith(today: today));
     _page = _repository
@@ -223,6 +226,7 @@ class TransactionListCubit extends Cubit<TransactionListState> {
 
   @override
   Future<void> close() async {
+    beginClose();
     await _cancelAll();
     _completeRefresh();
     return super.close();

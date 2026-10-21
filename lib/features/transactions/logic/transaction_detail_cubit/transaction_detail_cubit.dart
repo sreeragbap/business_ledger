@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:bloc/bloc.dart';
+import 'package:business_ledger/core/bloc/close_guard.dart';
 import 'package:business_ledger/core/bloc/status.dart';
 import 'package:business_ledger/core/domain/app_exception.dart';
 import 'package:business_ledger/core/domain/app_result.dart';
@@ -40,7 +41,8 @@ part 'transaction_detail_state.dart';
 /// listed under the balance ([TransactionDetailState.queued]) until the
 /// server applies them. The balance shown is always the server's.
 @injectable
-class TransactionDetailCubit extends Cubit<TransactionDetailState> {
+class TransactionDetailCubit extends Cubit<TransactionDetailState>
+    with CloseGuard<TransactionDetailState> {
   TransactionDetailCubit(
     this._repository,
     this._fields,
@@ -68,6 +70,7 @@ class TransactionDetailCubit extends Cubit<TransactionDetailState> {
     Currency currency = Currency.inr,
   }) async {
     await _cancelAll();
+    if (isClosing) return;
     _currency = currency;
     emit(
       TransactionDetailState(
@@ -399,6 +402,7 @@ class TransactionDetailCubit extends Cubit<TransactionDetailState> {
 
   @override
   Future<void> close() async {
+    beginClose();
     await _cancelAll();
     return super.close();
   }
