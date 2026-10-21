@@ -9,5 +9,20 @@
     <!-- Lets debug builds reach the local Firebase emulators over HTTP. -->
     <application
         android:networkSecurityConfig="@xml/network_security_config"
-        tools:ignore="UnusedAttribute" />
+        tools:ignore="UnusedAttribute">
+        <!-- A fixed Dart VM service address (http://127.0.0.1:43210/ on the
+             phone). `flutter run` finds the VM service by reading its
+             "listening on" line from logcat; some phones (vivo, with a
+             50 lines/s per-app log limit) drop that line, and the launch
+             then waits forever on a black screen. With a known address the
+             debugger can attach without logcat: VS Code "Attach (if launch
+             is stuck)", or `flutter attach` with that URL as its debug-url.
+             Debug builds only; the port listens on the phone's loopback. -->
+        <meta-data
+            android:name="io.flutter.embedding.android.VMServicePort"
+            android:value="43210" />
+        <meta-data
+            android:name="io.flutter.embedding.android.DisableServiceAuthCodes"
+            android:value="true" />
+    </application>
 </manifest>

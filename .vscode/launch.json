@@ -19,6 +19,17 @@
       "request": "launch",
       "type": "dart",
       "program": "lib/main_prod.dart"
+    },
+    {
+      // Android debug builds serve the VM service at this fixed address
+      // (android/app/src/debug/AndroidManifest.xml). Use it when a launch
+      // hangs on a black screen at "Waiting for VM Service port": stop that
+      // launch, open the app on the phone, then run this.
+      "name": "Attach (if launch is stuck)",
+      "request": "attach",
+      "type": "dart",
+      "program": "lib/main_dev.dart",
+      "vmServiceUri": "http://127.0.0.1:43210/"
     }
   ]
 }

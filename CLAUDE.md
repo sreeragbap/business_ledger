@@ -245,6 +245,12 @@ Release/Play signing will need its own SHA fingerprints.
 - iOS Google Sign-In crashes natively without a client id + URL scheme;
   `AuthService` refuses with a message instead.
 - "No AppCheckProvider installed" in logs is a harmless warning.
+- Debug launch stuck on a black screen at "Waiting for VM Service port"
+  (seen on a vivo phone, which drops app log lines above 50/s, sometimes
+  the VM service's "listening" line): stop it, open the app, run the VS Code
+  config "Attach (if launch is stuck)". Android debug builds serve the VM
+  service at a fixed `http://127.0.0.1:43210/` without auth code
+  (`android/app/src/debug/AndroidManifest.xml`).
 - iOS simulator builds may fail inside a sandbox on the SwiftPM cache; build
   outside it.
 
