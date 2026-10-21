@@ -10,6 +10,7 @@ import 'package:business_ledger/core/firebase/firebase_setup.dart';
 import 'package:business_ledger/core/supabase/supabase_setup.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 /// Shared startup path for every flavor.
 ///
@@ -27,6 +28,11 @@ Future<void> bootstrap(Flavor flavor) async {
   await runZonedGuarded(
     () async {
       WidgetsFlutterBinding.ensureInitialized();
+      // Portrait only; also set natively (Info.plist, AndroidManifest.xml)
+      // so the launch screen does not rotate either.
+      await SystemChrome.setPreferredOrientations([
+        DeviceOrientation.portraitUp,
+      ]);
       AppConfig.configure(flavor);
 
       FirebaseOptions options;
