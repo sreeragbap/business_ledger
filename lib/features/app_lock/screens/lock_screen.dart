@@ -2,8 +2,8 @@ import 'dart:async';
 
 import 'package:auto_route/auto_route.dart';
 import 'package:business_ledger/core/di/injection.dart';
-import 'package:business_ledger/core/theme/app_colors.dart';
 import 'package:business_ledger/core/theme/app_motion.dart';
+import 'package:business_ledger/core/theme/app_palette.dart';
 import 'package:business_ledger/core/theme/app_spacing.dart';
 import 'package:business_ledger/core/widgets/app_button.dart';
 import 'package:business_ledger/core/widgets/app_logo.dart';
@@ -100,7 +100,7 @@ class _LockScreenState extends State<LockScreen> {
                                     state.unlockStatus.message,
                                     textAlign: TextAlign.center,
                                     style: textTheme.bodyMedium?.copyWith(
-                                      color: AppColors.error,
+                                      color: context.colors.error,
                                     ),
                                   ),
                                 )

@@ -5,8 +5,8 @@ import 'package:business_ledger/core/ledger/ledger_math.dart';
 import 'package:business_ledger/core/money/currency.dart';
 import 'package:business_ledger/core/money/money.dart';
 import 'package:business_ledger/core/sync/action_outcome.dart';
-import 'package:business_ledger/core/theme/app_colors.dart';
 import 'package:business_ledger/core/theme/app_motion.dart';
+import 'package:business_ledger/core/theme/app_palette.dart';
 import 'package:business_ledger/core/theme/app_radius.dart';
 import 'package:business_ledger/core/theme/app_spacing.dart';
 import 'package:business_ledger/core/theme/app_text_styles.dart';
@@ -139,7 +139,7 @@ class _SettlementSheetState extends State<SettlementSheet> {
                 Text(
                   reason,
                   style: textTheme.bodySmall?.copyWith(
-                    color: AppColors.textTertiary,
+                    color: context.colors.textTertiary,
                   ),
                 ),
             ],
@@ -238,7 +238,9 @@ class _SettlementSheetState extends State<SettlementSheet> {
               SizedBox(height: AppSpacing.md.h),
               Text(
                 state.submitStatus.message,
-                style: textTheme.bodySmall?.copyWith(color: AppColors.error),
+                style: textTheme.bodySmall?.copyWith(
+                  color: context.colors.error,
+                ),
               ),
             ],
             if (!widget.online) ...[
@@ -249,7 +251,7 @@ class _SettlementSheetState extends State<SettlementSheet> {
                   Icon(
                     Icons.cloud_off_rounded,
                     size: 16.r,
-                    color: AppColors.warning,
+                    color: context.colors.warning,
                   ),
                   SizedBox(width: AppSpacing.sm.w),
                   Expanded(
@@ -320,7 +322,7 @@ class _Preview extends StatelessWidget {
                 : '${Money.format(from, currency)} → '
                       '${Money.format(to, currency)}',
             style: figure.copyWith(
-              color: from == to ? null : AppColors.textPrimary,
+              color: from == to ? null : context.colors.textPrimary,
             ),
           ),
         ],
@@ -329,7 +331,7 @@ class _Preview extends StatelessWidget {
     return Container(
       padding: EdgeInsets.all(AppSpacing.md.r),
       decoration: BoxDecoration(
-        color: AppColors.surfaceHigh,
+        color: context.colors.surfaceHigh,
         borderRadius: BorderRadius.circular(AppRadius.md.r),
       ),
       child: Column(

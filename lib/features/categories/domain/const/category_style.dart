@@ -1,4 +1,4 @@
-import 'package:business_ledger/core/theme/app_colors.dart';
+import 'package:business_ledger/core/theme/app_palette.dart';
 import 'package:flutter/material.dart';
 
 /// The curated icon set for categories. Keys are what is stored in
@@ -28,22 +28,32 @@ enum CategoryIcon {
       values.firstWhere((icon) => icon.key == key, orElse: () => receipt);
 }
 
-/// The curated colour set, mapped onto theme swatches that pass contrast on
-/// every surface.
+/// The curated colour set, mapped onto the palette's swatches, which pass
+/// contrast on every surface in both themes.
 enum CategoryColour {
-  green('green', 'Green', AppColors.swatchGreen),
-  teal('teal', 'Teal', AppColors.swatchTeal),
-  amber('amber', 'Amber', AppColors.swatchAmber),
-  purple('purple', 'Purple', AppColors.swatchPurple),
-  blue('blue', 'Blue', AppColors.swatchBlue),
-  grey('grey', 'Grey', AppColors.swatchGrey),
-  orange('orange', 'Orange', AppColors.swatchOrange);
+  green('green', 'Green'),
+  teal('teal', 'Teal'),
+  amber('amber', 'Amber'),
+  purple('purple', 'Purple'),
+  blue('blue', 'Blue'),
+  grey('grey', 'Grey'),
+  orange('orange', 'Orange');
 
-  const CategoryColour(this.key, this.label, this.color);
+  const CategoryColour(this.key, this.label);
 
   final String key;
   final String label;
-  final Color color;
+
+  /// This colour in [palette] (`context.colors`).
+  Color colorIn(AppPalette palette) => switch (this) {
+    green => palette.swatchGreen,
+    teal => palette.swatchTeal,
+    amber => palette.swatchAmber,
+    purple => palette.swatchPurple,
+    blue => palette.swatchBlue,
+    grey => palette.swatchGrey,
+    orange => palette.swatchOrange,
+  };
 
   static CategoryColour fromKey(Object? key) =>
       values.firstWhere((colour) => colour.key == key, orElse: () => grey);

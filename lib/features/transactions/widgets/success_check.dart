@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:business_ledger/core/theme/app_colors.dart';
+import 'package:business_ledger/core/theme/app_palette.dart';
 import 'package:business_ledger/core/theme/app_radius.dart';
 import 'package:business_ledger/core/theme/app_spacing.dart';
 import 'package:flutter/material.dart';
@@ -78,9 +79,9 @@ class _SuccessCheckState extends State<SuccessCheck>
                   child: Container(
                     padding: EdgeInsets.all(AppSpacing.xl.r),
                     decoration: BoxDecoration(
-                      color: AppColors.surfaceRaised,
+                      color: context.colors.surfaceRaised,
                       borderRadius: BorderRadius.circular(AppRadius.xl.r),
-                      border: Border.all(color: AppColors.border),
+                      border: Border.all(color: context.colors.border),
                     ),
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
@@ -88,7 +89,7 @@ class _SuccessCheckState extends State<SuccessCheck>
                         SizedBox.square(
                           dimension: 64.r,
                           child: CustomPaint(
-                            painter: _CheckPainter(draw),
+                            painter: _CheckPainter(draw, context.colors.income),
                           ),
                         ),
                         SizedBox(height: AppSpacing.md.h),
@@ -110,9 +111,10 @@ class _SuccessCheckState extends State<SuccessCheck>
 }
 
 class _CheckPainter extends CustomPainter {
-  _CheckPainter(this.progress);
+  _CheckPainter(this.progress, this.colour);
 
   final double progress;
+  final Color colour;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -121,14 +123,14 @@ class _CheckPainter extends CustomPainter {
     canvas.drawCircle(
       center,
       radius,
-      Paint()..color = AppColors.tint(AppColors.income),
+      Paint()..color = AppColors.tint(colour),
     );
     final path = Path()
       ..moveTo(size.width * 0.28, size.height * 0.52)
       ..lineTo(size.width * 0.44, size.height * 0.67)
       ..lineTo(size.width * 0.73, size.height * 0.36);
     final paint = Paint()
-      ..color = AppColors.income
+      ..color = colour
       ..style = PaintingStyle.stroke
       ..strokeWidth = size.width * 0.08
       ..strokeCap = StrokeCap.round
@@ -140,5 +142,5 @@ class _CheckPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_CheckPainter oldDelegate) =>
-      oldDelegate.progress != progress;
+      oldDelegate.progress != progress || oldDelegate.colour != colour;
 }

@@ -3,7 +3,7 @@ import 'dart:async';
 import 'package:auto_route/auto_route.dart';
 import 'package:business_ledger/core/di/injection.dart';
 import 'package:business_ledger/core/router/app_router.dart';
-import 'package:business_ledger/core/theme/app_colors.dart';
+import 'package:business_ledger/core/theme/app_palette.dart';
 import 'package:business_ledger/core/theme/app_radius.dart';
 import 'package:business_ledger/core/theme/app_spacing.dart';
 import 'package:business_ledger/core/widgets/app_bottom_sheet.dart';
@@ -64,9 +64,9 @@ class BusinessSwitcherButton extends StatelessWidget {
             AppSpacing.xs.h,
           ),
           decoration: BoxDecoration(
-            color: AppColors.surface,
+            color: context.colors.surface,
             borderRadius: AppRadius.chip,
-            border: Border.all(color: AppColors.border),
+            border: Border.all(color: context.colors.border),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,

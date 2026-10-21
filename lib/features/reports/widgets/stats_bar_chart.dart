@@ -2,8 +2,8 @@ import 'dart:math' as math;
 
 import 'package:business_ledger/core/money/currency.dart';
 import 'package:business_ledger/core/money/money.dart';
-import 'package:business_ledger/core/theme/app_colors.dart';
 import 'package:business_ledger/core/theme/app_motion.dart';
+import 'package:business_ledger/core/theme/app_palette.dart';
 import 'package:business_ledger/core/theme/app_spacing.dart';
 import 'package:business_ledger/features/reports/domain/models/stats_bucket.dart';
 import 'package:flutter/foundation.dart';
@@ -105,6 +105,7 @@ class _StatsBarChartState extends State<StatsBarChart> {
                   builder: (context, progress, _) => CustomPaint(
                     size: Size(constraints.maxWidth, widget.height.h),
                     painter: _BarChartPainter(
+                      palette: context.colors,
                       primary: [for (final b in buckets) series.primary(b)],
                       secondary: [for (final b in buckets) series.secondary(b)],
                       labels: [for (final b in buckets) b.label],
@@ -112,7 +113,7 @@ class _StatsBarChartState extends State<StatsBarChart> {
                       selected: _selected,
                       currency: widget.currency,
                       labelStyle: textTheme.labelSmall!.copyWith(
-                        color: AppColors.textTertiary,
+                        color: context.colors.textTertiary,
                         fontSize: 10.sp,
                       ),
                     ),
@@ -135,7 +136,7 @@ class _StatsBarChartState extends State<StatsBarChart> {
                   runSpacing: AppSpacing.xs.h,
                   children: [
                     _Legend(
-                      colour: AppColors.income,
+                      colour: context.colors.income,
                       label: series.primaryLabel,
                       value: Money.format(
                         selected == null
@@ -145,7 +146,7 @@ class _StatsBarChartState extends State<StatsBarChart> {
                       ),
                     ),
                     _Legend(
-                      colour: AppColors.expense,
+                      colour: context.colors.expense,
                       label: series.secondaryLabel,
                       value: Money.format(
                         selected == null
@@ -226,6 +227,7 @@ class _BarChartPainter extends CustomPainter {
     required this.selected,
     required this.currency,
     required this.labelStyle,
+    required this.palette,
   });
 
   static const double axisWidth = 40;
@@ -238,6 +240,7 @@ class _BarChartPainter extends CustomPainter {
   final int? selected;
   final Currency currency;
   final TextStyle labelStyle;
+  final AppPalette palette;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -254,7 +257,7 @@ class _BarChartPainter extends CustomPainter {
     ].fold<int>(0, math.max);
 
     final grid = Paint()
-      ..color = AppColors.divider
+      ..color = palette.divider
       ..strokeWidth = 1;
     // Three gridlines: 0, half, max.
     for (var step = 0; step <= 2; step++) {
@@ -275,8 +278,8 @@ class _BarChartPainter extends CustomPainter {
     final barWidth = math.min(14, slot * 0.32).toDouble();
     final gap = math.min(3, slot * 0.06).toDouble();
     final radius = Radius.circular(math.min(4, barWidth / 2));
-    final income = Paint()..color = AppColors.income;
-    final expense = Paint()..color = AppColors.expense;
+    final income = Paint()..color = palette.income;
+    final expense = Paint()..color = palette.expense;
     final faded = selected != null;
 
     for (var i = 0; i < count; i++) {
@@ -293,7 +296,7 @@ class _BarChartPainter extends CustomPainter {
             ),
             const Radius.circular(6),
           ),
-          Paint()..color = AppColors.surfaceHigh,
+          Paint()..color = palette.surfaceHigh,
         );
       }
       for (final (value, paint, left) in [
@@ -353,5 +356,6 @@ class _BarChartPainter extends CustomPainter {
       old.selected != selected ||
       !listEquals(old.labels, labels) ||
       !listEquals(old.primary, primary) ||
-      !listEquals(old.secondary, secondary);
+      !listEquals(old.secondary, secondary) ||
+      old.palette != palette;
 }

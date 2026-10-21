@@ -1,18 +1,19 @@
-import 'package:business_ledger/core/theme/app_colors.dart';
+import 'package:business_ledger/core/theme/app_palette.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 
 /// Typography scale. Feeds `ThemeData.textTheme`; widgets read styles from
 /// `Theme.of(context).textTheme` and `copyWith` weight or colour, never size.
 ///
-/// Getters rather than constants because `.sp` reads the live screen.
+/// Methods rather than constants because `.sp` reads the live screen; colours
+/// come from the palette of the theme being built.
 /// No font is bundled yet; the platform default (SF Pro / Roboto) is used.
 abstract final class AppTextStyles {
   static TextStyle _style(
     double size,
     FontWeight weight, {
+    required Color color,
     double height = 1.3,
-    Color color = AppColors.textPrimary,
     double letterSpacing = 0,
   }) => TextStyle(
     fontSize: size.sp,
@@ -23,65 +24,83 @@ abstract final class AppTextStyles {
   );
 
   /// Hero figures: the dashboard balance.
-  static TextStyle get displayLarge =>
-      _style(34, FontWeight.w700, height: 1.15, letterSpacing: -0.5);
-  static TextStyle get displayMedium =>
-      _style(28, FontWeight.w700, height: 1.2, letterSpacing: -0.3);
-  static TextStyle get displaySmall => _style(24, FontWeight.w700);
+  static TextStyle displayLarge(AppPalette p) => _style(
+    34,
+    FontWeight.w700,
+    height: 1.15,
+    letterSpacing: -0.5,
+    color: p.textPrimary,
+  );
+  static TextStyle displayMedium(AppPalette p) => _style(
+    28,
+    FontWeight.w700,
+    height: 1.2,
+    letterSpacing: -0.3,
+    color: p.textPrimary,
+  );
+  static TextStyle displaySmall(AppPalette p) =>
+      _style(24, FontWeight.w700, color: p.textPrimary);
 
-  static TextStyle get headlineLarge => _style(22, FontWeight.w700);
-  static TextStyle get headlineMedium => _style(20, FontWeight.w600);
-  static TextStyle get headlineSmall => _style(18, FontWeight.w600);
+  static TextStyle headlineLarge(AppPalette p) =>
+      _style(22, FontWeight.w700, color: p.textPrimary);
+  static TextStyle headlineMedium(AppPalette p) =>
+      _style(20, FontWeight.w600, color: p.textPrimary);
+  static TextStyle headlineSmall(AppPalette p) =>
+      _style(18, FontWeight.w600, color: p.textPrimary);
 
-  static TextStyle get titleLarge => _style(18, FontWeight.w600);
-  static TextStyle get titleMedium => _style(16, FontWeight.w600);
-  static TextStyle get titleSmall => _style(14, FontWeight.w600);
+  static TextStyle titleLarge(AppPalette p) =>
+      _style(18, FontWeight.w600, color: p.textPrimary);
+  static TextStyle titleMedium(AppPalette p) =>
+      _style(16, FontWeight.w600, color: p.textPrimary);
+  static TextStyle titleSmall(AppPalette p) =>
+      _style(14, FontWeight.w600, color: p.textPrimary);
 
-  static TextStyle get bodyLarge => _style(16, FontWeight.w400, height: 1.45);
-  static TextStyle get bodyMedium => _style(
+  static TextStyle bodyLarge(AppPalette p) =>
+      _style(16, FontWeight.w400, height: 1.45, color: p.textPrimary);
+  static TextStyle bodyMedium(AppPalette p) => _style(
     14,
     FontWeight.w400,
     height: 1.45,
-    color: AppColors.textSecondary,
+    color: p.textSecondary,
   );
-  static TextStyle get bodySmall => _style(
+  static TextStyle bodySmall(AppPalette p) => _style(
     12,
     FontWeight.w400,
     height: 1.4,
-    color: AppColors.textTertiary,
+    color: p.textTertiary,
   );
 
-  static TextStyle get labelLarge =>
-      _style(15, FontWeight.w600, letterSpacing: 0.1);
-  static TextStyle get labelMedium => _style(
+  static TextStyle labelLarge(AppPalette p) =>
+      _style(15, FontWeight.w600, letterSpacing: 0.1, color: p.textPrimary);
+  static TextStyle labelMedium(AppPalette p) => _style(
     13,
     FontWeight.w500,
-    color: AppColors.textSecondary,
+    color: p.textSecondary,
     letterSpacing: 0.1,
   );
-  static TextStyle get labelSmall => _style(
+  static TextStyle labelSmall(AppPalette p) => _style(
     11,
     FontWeight.w500,
-    color: AppColors.textSecondary,
+    color: p.textSecondary,
     letterSpacing: 0.2,
   );
 
-  static TextTheme get textTheme => TextTheme(
-    displayLarge: displayLarge,
-    displayMedium: displayMedium,
-    displaySmall: displaySmall,
-    headlineLarge: headlineLarge,
-    headlineMedium: headlineMedium,
-    headlineSmall: headlineSmall,
-    titleLarge: titleLarge,
-    titleMedium: titleMedium,
-    titleSmall: titleSmall,
-    bodyLarge: bodyLarge,
-    bodyMedium: bodyMedium,
-    bodySmall: bodySmall,
-    labelLarge: labelLarge,
-    labelMedium: labelMedium,
-    labelSmall: labelSmall,
+  static TextTheme textTheme(AppPalette p) => TextTheme(
+    displayLarge: displayLarge(p),
+    displayMedium: displayMedium(p),
+    displaySmall: displaySmall(p),
+    headlineLarge: headlineLarge(p),
+    headlineMedium: headlineMedium(p),
+    headlineSmall: headlineSmall(p),
+    titleLarge: titleLarge(p),
+    titleMedium: titleMedium(p),
+    titleSmall: titleSmall(p),
+    bodyLarge: bodyLarge(p),
+    bodyMedium: bodyMedium(p),
+    bodySmall: bodySmall(p),
+    labelLarge: labelLarge(p),
+    labelMedium: labelMedium(p),
+    labelSmall: labelSmall(p),
   );
 
   /// Equal-width digits, so amounts in a column line up. Apply to any style

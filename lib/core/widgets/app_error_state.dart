@@ -1,4 +1,5 @@
 import 'package:business_ledger/core/theme/app_colors.dart';
+import 'package:business_ledger/core/theme/app_palette.dart';
 import 'package:business_ledger/core/theme/app_spacing.dart';
 import 'package:business_ledger/core/widgets/app_button.dart';
 import 'package:flutter/material.dart';
@@ -38,10 +39,10 @@ class AppErrorState extends StatelessWidget {
             Container(
               padding: EdgeInsets.all(AppSpacing.lg.r),
               decoration: BoxDecoration(
-                color: AppColors.tint(AppColors.error),
+                color: AppColors.tint(context.colors.error),
                 shape: BoxShape.circle,
               ),
-              child: Icon(icon, size: 32.r, color: AppColors.error),
+              child: Icon(icon, size: 32.r, color: context.colors.error),
             ),
             SizedBox(height: AppSpacing.lg.h),
             Text(

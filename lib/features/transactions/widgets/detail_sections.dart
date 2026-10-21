@@ -2,6 +2,7 @@ import 'package:business_ledger/core/ledger/ledger_enums.dart';
 import 'package:business_ledger/core/money/currency.dart';
 import 'package:business_ledger/core/money/money.dart';
 import 'package:business_ledger/core/theme/app_colors.dart';
+import 'package:business_ledger/core/theme/app_palette.dart';
 import 'package:business_ledger/core/theme/app_radius.dart';
 import 'package:business_ledger/core/theme/app_spacing.dart';
 import 'package:business_ledger/core/theme/app_text_styles.dart';
@@ -75,7 +76,7 @@ class BalanceBreakdown extends StatelessWidget {
                 minor: balance.refunded,
                 currency: currency,
                 caption: 'cash',
-                colour: AppColors.refund,
+                colour: context.colors.refund,
               ),
             Padding(
               padding: EdgeInsets.symmetric(vertical: AppSpacing.sm.h),
@@ -90,8 +91,10 @@ class BalanceBreakdown extends StatelessWidget {
                     builder: (context, value, _) => LinearProgressIndicator(
                       value: value,
                       minHeight: 6,
-                      backgroundColor: AppColors.surfaceHigh,
-                      color: inflow ? AppColors.income : AppColors.expense,
+                      backgroundColor: context.colors.surfaceHigh,
+                      color: inflow
+                          ? context.colors.income
+                          : context.colors.expense,
                     ),
                   ),
                 ),
@@ -105,7 +108,7 @@ class BalanceBreakdown extends StatelessWidget {
               currency: currency,
               strong: true,
               colour: balance.outstanding > 0 && tx.isConfirmed
-                  ? AppColors.warning
+                  ? context.colors.warning
                   : null,
             ),
           ],
@@ -170,7 +173,7 @@ class _FigureRow extends StatelessWidget {
                       TextSpan(
                         text: '  $caption',
                         style: textTheme.labelSmall?.copyWith(
-                          color: AppColors.textTertiary,
+                          color: context.colors.textTertiary,
                         ),
                       ),
                   ],
@@ -183,7 +186,8 @@ class _FigureRow extends StatelessWidget {
                   AppTextStyles.tabular(
                     strong ? textTheme.titleSmall! : textTheme.bodyMedium!,
                   ).copyWith(
-                    color: colour ?? (strong ? AppColors.textPrimary : null),
+                    color:
+                        colour ?? (strong ? context.colors.textPrimary : null),
                   ),
             ),
           ],
@@ -215,7 +219,7 @@ class DetailLine extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           if (icon != null) ...[
-            Icon(icon, size: 18.r, color: AppColors.textTertiary),
+            Icon(icon, size: 18.r, color: context.colors.textTertiary),
             SizedBox(width: AppSpacing.sm.w),
           ],
           SizedBox(
@@ -272,7 +276,7 @@ class LineItemsTable extends StatelessWidget {
                             ? 'Line ${index + 1}'
                             : line.description,
                         style: textTheme.bodyMedium?.copyWith(
-                          color: AppColors.textPrimary,
+                          color: context.colors.textPrimary,
                         ),
                       ),
                       Text(
@@ -308,11 +312,12 @@ class SettlementTimeline extends StatelessWidget {
   /// Opens a refund's visible ledger entry.
   final ValueChanged<String>? onOpenLinked;
 
-  static Color colourOf(SettlementKind kind) => switch (kind) {
-    SettlementKind.payment => AppColors.income,
-    SettlementKind.refund => AppColors.refund,
-    SettlementKind.credit => AppColors.info,
-  };
+  static Color colourOf(SettlementKind kind, AppPalette palette) =>
+      switch (kind) {
+        SettlementKind.payment => palette.income,
+        SettlementKind.refund => palette.refund,
+        SettlementKind.credit => palette.info,
+      };
 
   static IconData iconOf(SettlementKind kind) => switch (kind) {
     SettlementKind.payment => Icons.payments_outlined,
@@ -338,21 +343,23 @@ class SettlementTimeline extends StatelessWidget {
                         width: 32.r,
                         height: 32.r,
                         decoration: BoxDecoration(
-                          color: AppColors.tint(colourOf(settlement.kind)),
+                          color: AppColors.tint(
+                            colourOf(settlement.kind, context.colors),
+                          ),
                           shape: BoxShape.circle,
                         ),
                         child: Icon(
                           iconOf(settlement.kind),
                           size: 16.r,
-                          color: colourOf(settlement.kind),
+                          color: colourOf(settlement.kind, context.colors),
                         ),
                       ),
                       if (index < settlements.length - 1)
-                        const Expanded(
+                        Expanded(
                           child: VerticalDivider(
                             width: 2,
                             thickness: 2,
-                            color: AppColors.border,
+                            color: context.colors.border,
                           ),
                         ),
                     ],
@@ -375,9 +382,15 @@ class SettlementTimeline extends StatelessWidget {
                             ),
                             Text(
                               Money.format(settlement.amountMinor, currency),
-                              style: AppTextStyles.tabular(
-                                textTheme.titleSmall!,
-                              ).copyWith(color: colourOf(settlement.kind)),
+                              style:
+                                  AppTextStyles.tabular(
+                                    textTheme.titleSmall!,
+                                  ).copyWith(
+                                    color: colourOf(
+                                      settlement.kind,
+                                      context.colors,
+                                    ),
+                                  ),
                             ),
                           ],
                         ),
@@ -460,7 +473,7 @@ class AuditHistory extends StatelessWidget {
                 Icon(
                   Icons.history_rounded,
                   size: 18.r,
-                  color: AppColors.textTertiary,
+                  color: context.colors.textTertiary,
                 ),
                 SizedBox(width: AppSpacing.sm.w),
                 Expanded(

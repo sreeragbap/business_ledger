@@ -1,5 +1,6 @@
 import 'package:business_ledger/core/theme/app_colors.dart';
 import 'package:business_ledger/core/theme/app_motion.dart';
+import 'package:business_ledger/core/theme/app_palette.dart';
 import 'package:business_ledger/core/theme/app_radius.dart';
 import 'package:business_ledger/core/theme/app_spacing.dart';
 import 'package:business_ledger/core/widgets/app_card.dart';
@@ -29,7 +30,7 @@ class TemplateCard extends StatelessWidget {
       selected: selected,
       child: AppCard(
         onTap: onTap,
-        borderColor: selected ? AppColors.accent : null,
+        borderColor: selected ? context.colors.accent : null,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -39,14 +40,14 @@ class TemplateCard extends StatelessWidget {
                   padding: EdgeInsets.all(AppSpacing.sm.r),
                   decoration: BoxDecoration(
                     color: selected
-                        ? AppColors.accentMuted
-                        : AppColors.surfaceRaised,
+                        ? context.colors.accentMuted
+                        : context.colors.surfaceRaised,
                     borderRadius: BorderRadius.circular(AppRadius.md.r),
                   ),
                   child: Icon(
                     template.icon,
                     size: 22.r,
-                    color: selected ? AppColors.accent : null,
+                    color: selected ? context.colors.accent : null,
                   ),
                 ),
                 SizedBox(width: AppSpacing.md.w),
@@ -66,7 +67,7 @@ class TemplateCard extends StatelessWidget {
                         ? Icons.radio_button_checked_rounded
                         : Icons.radio_button_off_rounded,
                     key: ValueKey(selected),
-                    color: selected ? AppColors.accent : null,
+                    color: selected ? context.colors.accent : null,
                     size: 22.r,
                   ),
                 ),
@@ -149,7 +150,7 @@ class _CategoryPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colour = category.colour.color;
+    final colour = category.colour.colorIn(context.colors);
     return Container(
       padding: EdgeInsets.symmetric(
         horizontal: AppSpacing.sm.w,

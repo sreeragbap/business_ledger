@@ -110,6 +110,8 @@ import 'package:business_ledger/features/reports/logic/dashboard_cubit/dashboard
     as _i1006;
 import 'package:business_ledger/features/reports/logic/reports_cubit/reports_cubit.dart'
     as _i1034;
+import 'package:business_ledger/features/settings/logic/theme_cubit/theme_cubit.dart'
+    as _i622;
 import 'package:business_ledger/features/sync/logic/sync_cubit/sync_cubit.dart'
     as _i1051;
 import 'package:business_ledger/features/transactions/domain/repository/transaction_repository.dart'
@@ -193,6 +195,9 @@ extension GetItInjectableX on _i174.GetIt {
     gh.lazySingleton<_i304.SyncSettings>(
       () => _i304.SyncSettings(gh<_i460.SharedPreferences>()),
       dispose: (i) => i.dispose(),
+    );
+    gh.lazySingleton<_i622.ThemeCubit>(
+      () => _i622.ThemeCubit(gh<_i460.SharedPreferences>()),
     );
     gh.lazySingleton<_i699.SyncIdentity>(
       () => _i699.FirebaseSyncIdentity(gh<_i59.FirebaseAuth>()),

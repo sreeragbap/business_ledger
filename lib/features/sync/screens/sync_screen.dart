@@ -4,8 +4,8 @@ import 'package:auto_route/auto_route.dart';
 import 'package:business_ledger/core/di/injection.dart';
 import 'package:business_ledger/core/sync/outbox_entry.dart';
 import 'package:business_ledger/core/sync/sync_status.dart';
-import 'package:business_ledger/core/theme/app_colors.dart';
 import 'package:business_ledger/core/theme/app_motion.dart';
+import 'package:business_ledger/core/theme/app_palette.dart';
 import 'package:business_ledger/core/theme/app_spacing.dart';
 import 'package:business_ledger/core/widgets/app_button.dart';
 import 'package:business_ledger/core/widgets/app_card.dart';
@@ -175,7 +175,8 @@ class _StatusCard extends StatelessWidget {
               Icon(
                 info?.icon ?? Icons.cloud_done_outlined,
                 size: 20.r,
-                color: info?.colour ?? AppColors.income,
+                color:
+                    info?.tone.colorIn(context.colors) ?? context.colors.income,
               ),
               SizedBox(width: AppSpacing.sm.w),
               Expanded(
@@ -256,7 +257,7 @@ class _NothingWaiting extends StatelessWidget {
         Icon(
           Icons.check_circle_outline_rounded,
           size: 20.r,
-          color: AppColors.income,
+          color: context.colors.income,
         ),
         SizedBox(width: AppSpacing.sm.w),
         Expanded(
@@ -323,7 +324,7 @@ class OutboxEntryTile extends StatelessWidget {
           Icon(
             iconOf(entry.kind),
             size: 20.r,
-            color: failed ? AppColors.error : AppColors.textSecondary,
+            color: failed ? context.colors.error : context.colors.textSecondary,
           ),
           SizedBox(width: AppSpacing.md.w),
           Expanded(
@@ -341,7 +342,7 @@ class OutboxEntryTile extends StatelessWidget {
                   Text(
                     entry.lastError!.message,
                     style: textTheme.bodySmall?.copyWith(
-                      color: AppColors.error,
+                      color: context.colors.error,
                     ),
                   ),
                 ],

@@ -1,4 +1,5 @@
 import 'package:business_ledger/core/theme/app_colors.dart';
+import 'package:business_ledger/core/theme/app_palette.dart';
 import 'package:business_ledger/core/theme/app_radius.dart';
 import 'package:business_ledger/features/business/domain/const/role.dart';
 import 'package:business_ledger/features/business/domain/models/business.dart';
@@ -23,14 +24,16 @@ class BusinessAvatar extends StatelessWidget {
       alignment: Alignment.center,
       decoration: BoxDecoration(
         color: business.archived
-            ? AppColors.surfaceHigh
-            : AppColors.accentMuted,
+            ? context.colors.surfaceHigh
+            : context.colors.accentMuted,
         borderRadius: BorderRadius.circular(AppRadius.md.r),
       ),
       child: Text(
         business.initials,
         style: Theme.of(context).textTheme.titleSmall?.copyWith(
-          color: business.archived ? AppColors.textSecondary : AppColors.accent,
+          color: business.archived
+              ? context.colors.textSecondary
+              : context.colors.accent,
           fontSize: side * 0.36,
         ),
       ),
@@ -44,16 +47,16 @@ class RoleChip extends StatelessWidget {
 
   final Role role;
 
-  static Color colourOf(Role role) => switch (role) {
-    Role.owner => AppColors.accent,
-    Role.admin => AppColors.info,
-    Role.editor => AppColors.swatchPurple,
-    Role.viewer => AppColors.textSecondary,
+  static Color colourOf(Role role, AppPalette palette) => switch (role) {
+    Role.owner => palette.accent,
+    Role.admin => palette.info,
+    Role.editor => palette.swatchPurple,
+    Role.viewer => palette.textSecondary,
   };
 
   @override
   Widget build(BuildContext context) {
-    final colour = colourOf(role);
+    final colour = colourOf(role, context.colors);
     return Container(
       padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 3.h),
       decoration: BoxDecoration(

@@ -1,4 +1,4 @@
-import 'package:business_ledger/core/theme/app_colors.dart';
+import 'package:business_ledger/core/theme/app_palette.dart';
 import 'package:business_ledger/core/theme/app_spacing.dart';
 import 'package:business_ledger/core/widgets/app_button.dart';
 import 'package:business_ledger/core/widgets/app_text_field.dart';
@@ -63,7 +63,9 @@ class _CancelTransactionDialogState extends State<CancelTransactionDialog> {
               SizedBox(height: AppSpacing.sm.h),
               Text(
                 CancelTransactionDialog.queuedNote,
-                style: textTheme.bodySmall?.copyWith(color: AppColors.warning),
+                style: textTheme.bodySmall?.copyWith(
+                  color: context.colors.warning,
+                ),
               ),
             ],
             SizedBox(height: AppSpacing.lg.h),
@@ -106,7 +108,7 @@ class _CancelTransactionDialogState extends State<CancelTransactionDialog> {
           ],
         ),
       ],
-      iconColor: AppColors.error,
+      iconColor: context.colors.error,
       icon: const Icon(Icons.warning_amber_rounded),
     );
   }

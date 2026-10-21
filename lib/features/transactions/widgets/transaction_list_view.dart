@@ -2,7 +2,7 @@ import 'dart:async';
 
 import 'package:business_ledger/core/ledger/ledger_enums.dart';
 import 'package:business_ledger/core/money/currency.dart';
-import 'package:business_ledger/core/theme/app_colors.dart';
+import 'package:business_ledger/core/theme/app_palette.dart';
 import 'package:business_ledger/core/theme/app_radius.dart';
 import 'package:business_ledger/core/theme/app_spacing.dart';
 import 'package:business_ledger/core/widgets/app_button.dart';
@@ -252,7 +252,7 @@ class _SectionLabel extends StatelessWidget {
           Text(
             '$count',
             style: Theme.of(context).textTheme.labelSmall?.copyWith(
-              color: AppColors.textTertiary,
+              color: context.colors.textTertiary,
             ),
           ),
         ],
@@ -281,7 +281,7 @@ class _PartialOrderNote extends StatelessWidget {
           Icon(
             Icons.info_outline_rounded,
             size: 14.r,
-            color: AppColors.textTertiary,
+            color: context.colors.textTertiary,
           ),
           SizedBox(width: AppSpacing.xs.w),
           Expanded(

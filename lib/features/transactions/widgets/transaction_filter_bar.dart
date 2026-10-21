@@ -1,7 +1,7 @@
 import 'dart:async';
 
 import 'package:business_ledger/core/ledger/ledger_enums.dart';
-import 'package:business_ledger/core/theme/app_colors.dart';
+import 'package:business_ledger/core/theme/app_palette.dart';
 import 'package:business_ledger/core/theme/app_spacing.dart';
 import 'package:business_ledger/core/widgets/app_text_field.dart';
 import 'package:business_ledger/features/transactions/domain/const/transaction_filters.dart';
@@ -198,7 +198,7 @@ class _TransactionFilterBarState extends State<TransactionFilterBar> {
         avatar: icon == null ? null : Icon(icon, size: 18.r),
         selected: selected,
         showCheckmark: false,
-        selectedColor: AppColors.accentMuted,
+        selectedColor: context.colors.accentMuted,
         onPressed: onTap,
         onDeleted: selected && onClear != null
             ? () => unawaited(onClear())
@@ -264,7 +264,7 @@ class _TransactionFilterBarState extends State<TransactionFilterBar> {
                 ? Icons.schedule_rounded
                 : null,
             iconColour: payment == PaymentFilter.overdue
-                ? AppColors.warning
+                ? context.colors.warning
                 : null,
           ),
       ],
@@ -307,7 +307,7 @@ class _TransactionFilterBarState extends State<TransactionFilterBar> {
             label: category.name,
             subtitle: category.archived ? 'Archived' : category.kind.label,
             icon: category.icon.icon,
-            iconColour: category.colour.color,
+            iconColour: category.colour.colorIn(context.colors),
           ),
       ],
     );

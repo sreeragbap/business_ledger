@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:business_ledger/core/theme/app_colors.dart';
+import 'package:business_ledger/core/theme/app_palette.dart';
 import 'package:business_ledger/core/theme/app_spacing.dart';
 import 'package:business_ledger/core/widgets/app_confirm_dialog.dart';
 import 'package:business_ledger/features/sync/logic/sync_cubit/sync_cubit.dart';
@@ -80,7 +80,9 @@ class SignOutBlockedDialog extends StatelessWidget {
                   '$failed ${failed == 1 ? 'was' : 'were'} refused by the '
                   'server: review ${failed == 1 ? 'it' : 'them'} in '
                   'Settings › Sync.',
-                  style: textTheme.bodySmall?.copyWith(color: AppColors.error),
+                  style: textTheme.bodySmall?.copyWith(
+                    color: context.colors.error,
+                  ),
                 ),
               ],
               if (!status.canSync) ...[
@@ -105,7 +107,9 @@ class SignOutBlockedDialog extends StatelessWidget {
               child: const Text('Cancel'),
             ),
             TextButton(
-              style: TextButton.styleFrom(foregroundColor: AppColors.error),
+              style: TextButton.styleFrom(
+                foregroundColor: context.colors.error,
+              ),
               onPressed: () => Navigator.of(context).pop(_GuardChoice.discard),
               child: const Text('Discard and sign out'),
             ),

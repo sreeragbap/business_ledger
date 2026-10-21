@@ -2,7 +2,7 @@ import 'dart:async';
 
 import 'package:business_ledger/core/bloc/status.dart';
 import 'package:business_ledger/core/money/money.dart';
-import 'package:business_ledger/core/theme/app_colors.dart';
+import 'package:business_ledger/core/theme/app_palette.dart';
 import 'package:business_ledger/core/theme/app_spacing.dart';
 import 'package:business_ledger/core/widgets/app_button.dart';
 import 'package:business_ledger/core/widgets/app_fade_in.dart';
@@ -86,7 +86,7 @@ class DashboardView extends StatelessWidget {
 
         return RefreshIndicator(
           onRefresh: cubit.refresh,
-          color: AppColors.accent,
+          color: context.colors.accent,
           child: ListView.separated(
             padding: EdgeInsets.fromLTRB(
               gutter,
@@ -167,7 +167,7 @@ class _ProfitAndLoss extends StatelessWidget {
             label: 'Income (confirmed)',
             minor: totals.incomeMinor,
             currency: state.currency,
-            colour: AppColors.income,
+            colour: context.colors.income,
             icon: Icons.trending_up_rounded,
             loading: loading,
           ),
@@ -175,7 +175,7 @@ class _ProfitAndLoss extends StatelessWidget {
             label: 'Expenses (confirmed)',
             minor: totals.expenseMinor,
             currency: state.currency,
-            colour: AppColors.expense,
+            colour: context.colors.expense,
             icon: Icons.trending_down_rounded,
             loading: loading,
           ),
@@ -183,7 +183,9 @@ class _ProfitAndLoss extends StatelessWidget {
             label: totals.netMinor >= 0 ? 'Net profit' : 'Net loss',
             minor: totals.netMinor,
             currency: state.currency,
-            colour: totals.netMinor >= 0 ? AppColors.accent : AppColors.warning,
+            colour: totals.netMinor >= 0
+                ? context.colors.accent
+                : context.colors.warning,
             icon: Icons.balance_rounded,
             caption: 'Income − expenses',
             loading: loading,
@@ -212,7 +214,7 @@ class _CashFlow extends StatelessWidget {
             label: 'Cash received',
             minor: totals.cashInMinor,
             currency: state.currency,
-            colour: AppColors.income,
+            colour: context.colors.income,
             icon: Icons.south_west_rounded,
             loading: loading,
           ),
@@ -220,7 +222,7 @@ class _CashFlow extends StatelessWidget {
             label: 'Cash paid',
             minor: totals.cashOutMinor,
             currency: state.currency,
-            colour: AppColors.expense,
+            colour: context.colors.expense,
             icon: Icons.north_east_rounded,
             loading: loading,
           ),
@@ -228,7 +230,7 @@ class _CashFlow extends StatelessWidget {
             label: 'Net cash',
             minor: totals.netCashMinor,
             currency: state.currency,
-            colour: AppColors.info,
+            colour: context.colors.info,
             icon: Icons.account_balance_wallet_outlined,
             caption: 'Received − paid',
             loading: loading,
@@ -269,7 +271,7 @@ class _Outstanding extends StatelessWidget {
                 caption: 'Outstanding — not yet received',
                 minor: balances?.receivableMinor ?? 0,
                 currency: state.currency,
-                colour: AppColors.info,
+                colour: context.colors.info,
                 icon: Icons.call_received_rounded,
                 loading: loading,
               ),
@@ -278,7 +280,7 @@ class _Outstanding extends StatelessWidget {
                 caption: 'Outstanding — not yet paid',
                 minor: balances?.payableMinor ?? 0,
                 currency: state.currency,
-                colour: AppColors.warning,
+                colour: context.colors.warning,
                 icon: Icons.call_made_rounded,
                 loading: loading,
               ),
@@ -289,7 +291,9 @@ class _Outstanding extends StatelessWidget {
             Text(
               'Offline: summed from entries saved on this device; may be '
               'incomplete.',
-              style: textTheme.bodySmall?.copyWith(color: AppColors.warning),
+              style: textTheme.bodySmall?.copyWith(
+                color: context.colors.warning,
+              ),
             ),
           ],
           if (state.balancesStatus.isFailure && balances == null) ...[

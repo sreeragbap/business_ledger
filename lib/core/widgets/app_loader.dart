@@ -1,4 +1,4 @@
-import 'package:business_ledger/core/theme/app_colors.dart';
+import 'package:business_ledger/core/theme/app_palette.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 
@@ -19,7 +19,7 @@ class AppLoader extends StatelessWidget {
       child: CircularProgressIndicator(
         strokeWidth: dimension / 10,
         strokeCap: StrokeCap.round,
-        color: color ?? AppColors.accent,
+        color: color ?? context.colors.accent,
       ),
     );
     return center ? Center(child: spinner) : spinner;

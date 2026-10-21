@@ -1,4 +1,4 @@
-import 'package:business_ledger/core/theme/app_colors.dart';
+import 'package:business_ledger/core/theme/app_palette.dart';
 import 'package:business_ledger/core/theme/app_radius.dart';
 import 'package:business_ledger/core/theme/app_spacing.dart';
 import 'package:flutter/material.dart';
@@ -28,10 +28,10 @@ class AppCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final radius = AppRadius.card;
     return Material(
-      color: color ?? AppColors.surface,
+      color: color ?? context.colors.surface,
       shape: RoundedRectangleBorder(
         borderRadius: radius,
-        side: BorderSide(color: borderColor ?? AppColors.border),
+        side: BorderSide(color: borderColor ?? context.colors.border),
       ),
       clipBehavior: Clip.antiAlias,
       child: InkWell(

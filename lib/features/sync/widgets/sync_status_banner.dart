@@ -1,31 +1,44 @@
 import 'dart:async';
 
 import 'package:business_ledger/core/sync/sync_status.dart';
-import 'package:business_ledger/core/theme/app_colors.dart';
 import 'package:business_ledger/core/theme/app_motion.dart';
+import 'package:business_ledger/core/theme/app_palette.dart';
 import 'package:business_ledger/core/theme/app_spacing.dart';
 import 'package:equatable/equatable.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 
+/// How urgent a banner is; its colour comes from the active palette.
+enum SyncBannerTone {
+  warning,
+  error,
+  info;
+
+  Color colorIn(AppPalette palette) => switch (this) {
+    warning => palette.warning,
+    error => palette.error,
+    info => palette.info,
+  };
+}
+
 /// What the banner says for one [SyncStatus].
 class SyncBannerInfo extends Equatable {
   const SyncBannerInfo(
     this.icon,
-    this.colour,
+    this.tone,
     this.message, {
     this.spin = false,
   });
 
   final IconData icon;
-  final Color colour;
+  final SyncBannerTone tone;
   final String message;
 
   /// Turn the icon (syncing).
   final bool spin;
 
   @override
-  List<Object?> get props => [icon, colour, message, spin];
+  List<Object?> get props => [icon, tone, message, spin];
 }
 
 /// A strip above every route that says where the user's changes are:
@@ -50,7 +63,7 @@ class SyncStatusBanner extends StatelessWidget {
     if (!status.online) {
       return SyncBannerInfo(
         Icons.cloud_off_rounded,
-        AppColors.warning,
+        SyncBannerTone.warning,
         waiting > 0
             ? 'Offline · ${_changes(waiting)} will sync'
             : status.hasLocalChanges
@@ -61,7 +74,7 @@ class SyncStatusBanner extends StatelessWidget {
     if (!status.syncEnabled) {
       return SyncBannerInfo(
         Icons.sync_disabled_rounded,
-        AppColors.warning,
+        SyncBannerTone.warning,
         waiting > 0
             ? 'Sync paused · $waiting waiting'
             : 'Sync paused · changes stay on this device',
@@ -70,7 +83,7 @@ class SyncStatusBanner extends StatelessWidget {
     if (failed > 0) {
       return SyncBannerInfo(
         Icons.error_outline_rounded,
-        AppColors.error,
+        SyncBannerTone.error,
         failed == 1
             ? '1 action needs attention'
             : '$failed actions need attention',
@@ -79,7 +92,7 @@ class SyncStatusBanner extends StatelessWidget {
     if (status.syncing) {
       return const SyncBannerInfo(
         Icons.sync_rounded,
-        AppColors.info,
+        SyncBannerTone.info,
         'Syncing…',
         spin: true,
       );
@@ -87,14 +100,14 @@ class SyncStatusBanner extends StatelessWidget {
     if (waiting > 0) {
       return SyncBannerInfo(
         Icons.schedule_rounded,
-        AppColors.info,
+        SyncBannerTone.info,
         '${_changes(waiting)} waiting to sync',
       );
     }
     if (status.hasLocalChanges) {
       return const SyncBannerInfo(
         Icons.sync_rounded,
-        AppColors.info,
+        SyncBannerTone.info,
         'Syncing…',
         spin: true,
       );
@@ -116,14 +129,14 @@ class SyncStatusBanner extends StatelessWidget {
               liveRegion: true,
               button: onTap != null,
               child: Material(
-                color: AppColors.surfaceRaised,
+                color: context.colors.surfaceRaised,
                 child: InkWell(
                   onTap: onTap,
                   child: Container(
                     width: double.infinity,
-                    decoration: const BoxDecoration(
+                    decoration: BoxDecoration(
                       border: Border(
-                        bottom: BorderSide(color: AppColors.border),
+                        bottom: BorderSide(color: context.colors.border),
                       ),
                     ),
                     padding: EdgeInsets.fromLTRB(
@@ -147,7 +160,7 @@ class SyncStatusBanner extends StatelessWidget {
                               info.message,
                               key: ValueKey(info.message),
                               style: Theme.of(context).textTheme.bodySmall
-                                  ?.copyWith(color: AppColors.textPrimary),
+                                  ?.copyWith(color: context.colors.textPrimary),
                             ),
                           ),
                         ),
@@ -155,7 +168,7 @@ class SyncStatusBanner extends StatelessWidget {
                           Icon(
                             Icons.chevron_right_rounded,
                             size: 18.r,
-                            color: AppColors.textTertiary,
+                            color: context.colors.textTertiary,
                           ),
                       ],
                     ),
@@ -223,6 +236,10 @@ class _BannerIconState extends State<_BannerIcon>
   Widget build(BuildContext context) => RotationTransition(
     // Material's sync arrows turn anticlockwise.
     turns: ReverseAnimation(_spin),
-    child: Icon(widget.info.icon, size: 16.r, color: widget.info.colour),
+    child: Icon(
+      widget.info.icon,
+      size: 16.r,
+      color: widget.info.tone.colorIn(context.colors),
+    ),
   );
 }

@@ -1,5 +1,5 @@
-import 'package:business_ledger/core/theme/app_colors.dart';
 import 'package:business_ledger/core/theme/app_motion.dart';
+import 'package:business_ledger/core/theme/app_palette.dart';
 import 'package:business_ledger/core/theme/app_spacing.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
@@ -72,8 +72,8 @@ class AppButton extends StatelessWidget {
       isLoading: isLoading,
       spinnerColour: switch (variant) {
         AppButtonVariant.primary =>
-          destructive ? AppColors.onError : AppColors.onAccent,
-        _ => destructive ? AppColors.error : AppColors.accent,
+          destructive ? context.colors.onError : context.colors.onAccent,
+        _ => destructive ? context.colors.error : context.colors.accent,
       },
     );
 
@@ -82,8 +82,8 @@ class AppButton extends StatelessWidget {
         onPressed: onTap,
         style: destructive
             ? FilledButton.styleFrom(
-                backgroundColor: AppColors.error,
-                foregroundColor: AppColors.onError,
+                backgroundColor: context.colors.error,
+                foregroundColor: context.colors.onError,
               )
             : null,
         child: child,
@@ -92,8 +92,8 @@ class AppButton extends StatelessWidget {
         onPressed: onTap,
         style: destructive
             ? OutlinedButton.styleFrom(
-                foregroundColor: AppColors.error,
-                side: const BorderSide(color: AppColors.error),
+                foregroundColor: context.colors.error,
+                side: BorderSide(color: context.colors.error),
               )
             : null,
         child: child,
@@ -101,7 +101,7 @@ class AppButton extends StatelessWidget {
       AppButtonVariant.text => TextButton(
         onPressed: onTap,
         style: destructive
-            ? TextButton.styleFrom(foregroundColor: AppColors.error)
+            ? TextButton.styleFrom(foregroundColor: context.colors.error)
             : null,
         child: child,
       ),

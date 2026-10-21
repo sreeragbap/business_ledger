@@ -2,7 +2,7 @@ import 'dart:async';
 
 import 'package:auto_route/auto_route.dart';
 import 'package:business_ledger/core/di/injection.dart';
-import 'package:business_ledger/core/theme/app_colors.dart';
+import 'package:business_ledger/core/theme/app_palette.dart';
 import 'package:business_ledger/core/theme/app_spacing.dart';
 import 'package:business_ledger/core/widgets/app_async_view.dart';
 import 'package:business_ledger/core/widgets/app_button.dart';
@@ -245,7 +245,7 @@ class _PartyTile extends StatelessWidget {
         children: [
           CircleAvatar(
             radius: 18.r,
-            backgroundColor: AppColors.surfaceHigh,
+            backgroundColor: context.colors.surfaceHigh,
             child: Icon(party.kind.icon, size: 18.r),
           ),
           SizedBox(width: AppSpacing.md.w),

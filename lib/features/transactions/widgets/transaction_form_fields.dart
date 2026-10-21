@@ -1,8 +1,8 @@
 import 'package:business_ledger/core/ledger/ledger_enums.dart';
 import 'package:business_ledger/core/money/currency.dart';
 import 'package:business_ledger/core/money/money.dart';
-import 'package:business_ledger/core/theme/app_colors.dart';
 import 'package:business_ledger/core/theme/app_motion.dart';
+import 'package:business_ledger/core/theme/app_palette.dart';
 import 'package:business_ledger/core/theme/app_radius.dart';
 import 'package:business_ledger/core/theme/app_spacing.dart';
 import 'package:business_ledger/core/theme/app_text_styles.dart';
@@ -75,8 +75,8 @@ class TransactionTypePicker extends StatelessWidget {
                   iconOf(type),
                   size: 18.r,
                   color: type == selected
-                      ? AppColors.accent
-                      : AppColors.textSecondary,
+                      ? context.colors.accent
+                      : context.colors.textSecondary,
                 ),
                 label: Text(type.label),
                 selected: type == selected,
@@ -203,7 +203,7 @@ class LineItemsEditor extends StatelessWidget {
             padding: EdgeInsets.only(bottom: AppSpacing.sm.h),
             child: Text(
               errorText!,
-              style: textTheme.bodySmall?.copyWith(color: AppColors.error),
+              style: textTheme.bodySmall?.copyWith(color: context.colors.error),
             ),
           ),
         Align(
@@ -249,9 +249,9 @@ class _LineRow extends StatelessWidget {
       margin: EdgeInsets.only(bottom: AppSpacing.sm.h),
       padding: EdgeInsets.all(AppSpacing.md.r),
       decoration: BoxDecoration(
-        color: AppColors.surfaceRaised,
+        color: context.colors.surfaceRaised,
         borderRadius: BorderRadius.circular(AppRadius.md.r),
-        border: Border.all(color: AppColors.border),
+        border: Border.all(color: context.colors.border),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -428,7 +428,9 @@ class CustomFieldInput extends StatelessWidget {
                 padding: EdgeInsets.only(top: AppSpacing.xs.h),
                 child: Text(
                   errorText!,
-                  style: textTheme.bodySmall?.copyWith(color: AppColors.error),
+                  style: textTheme.bodySmall?.copyWith(
+                    color: context.colors.error,
+                  ),
                 ),
               ),
           ],
@@ -441,7 +443,9 @@ class CustomFieldInput extends StatelessWidget {
               ? null
               : Text(
                   errorText!,
-                  style: textTheme.bodySmall?.copyWith(color: AppColors.error),
+                  style: textTheme.bodySmall?.copyWith(
+                    color: context.colors.error,
+                  ),
                 ),
           value: value == true,
           onChanged: enabled ? onChanged : null,

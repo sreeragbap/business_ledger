@@ -4,7 +4,7 @@ import 'package:auto_route/auto_route.dart';
 import 'package:business_ledger/core/di/injection.dart';
 import 'package:business_ledger/core/router/app_router.dart';
 import 'package:business_ledger/core/sync/sync_status.dart';
-import 'package:business_ledger/core/theme/app_colors.dart';
+import 'package:business_ledger/core/theme/app_palette.dart';
 import 'package:business_ledger/core/theme/app_spacing.dart';
 import 'package:business_ledger/core/widgets/app_card.dart';
 import 'package:business_ledger/core/widgets/app_confirm_dialog.dart';
@@ -17,6 +17,7 @@ import 'package:business_ledger/features/business/domain/const/role.dart';
 import 'package:business_ledger/features/business/logic/business_scope_cubit/business_scope_cubit.dart';
 import 'package:business_ledger/features/business/widgets/business_avatar.dart';
 import 'package:business_ledger/features/business/widgets/business_switcher.dart';
+import 'package:business_ledger/features/settings/logic/theme_cubit/theme_cubit.dart';
 import 'package:business_ledger/features/sync/logic/sync_cubit/sync_cubit.dart';
 import 'package:business_ledger/features/sync/widgets/sign_out_guard.dart';
 import 'package:business_ledger/features/sync/widgets/sync_status_banner.dart';
@@ -78,6 +79,8 @@ class SettingsScreen extends StatelessWidget implements AutoRouteWrapper {
             SizedBox(height: AppSpacing.xxl.h),
             const _BusinessSection(),
             const AppSectionLabel('Device'),
+            const _AppearanceCard(),
+            SizedBox(height: AppSpacing.md.h),
             const _SyncLink(),
             SizedBox(height: AppSpacing.xxl.h),
             const AppSectionLabel('Security'),
@@ -107,15 +110,15 @@ class SettingsScreen extends StatelessWidget implements AutoRouteWrapper {
             AppCard(
               padding: EdgeInsets.zero,
               child: ListTile(
-                leading: const Icon(
+                leading: Icon(
                   Icons.logout_rounded,
-                  color: AppColors.error,
+                  color: context.colors.error,
                 ),
                 title: Text(
                   'Sign out',
                   style: Theme.of(
                     context,
-                  ).textTheme.bodyLarge?.copyWith(color: AppColors.error),
+                  ).textTheme.bodyLarge?.copyWith(color: context.colors.error),
                 ),
                 onTap: () => unawaited(_confirmSignOut(context)),
               ),
@@ -143,6 +146,53 @@ class SettingsScreen extends StatelessWidget implements AutoRouteWrapper {
       destructive: true,
     );
     if (confirmed) await auth.signOut();
+  }
+}
+
+/// Light, dark, or whatever the phone uses. Stored on this device only.
+class _AppearanceCard extends StatelessWidget {
+  const _AppearanceCard();
+
+  static const List<(ThemeMode, String, IconData)> _options = [
+    (ThemeMode.system, 'System', Icons.brightness_auto_outlined),
+    (ThemeMode.light, 'Light', Icons.light_mode_outlined),
+    (ThemeMode.dark, 'Dark', Icons.dark_mode_outlined),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final mode = context.watch<ThemeCubit>().state;
+    final colors = context.colors;
+    return AppCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text('Appearance', style: Theme.of(context).textTheme.bodyLarge),
+          SizedBox(height: AppSpacing.md.h),
+          SegmentedButton<ThemeMode>(
+            showSelectedIcon: false,
+            segments: [
+              for (final (value, label, icon) in _options)
+                ButtonSegment(
+                  value: value,
+                  label: Text(label),
+                  icon: Icon(icon, size: 18.r),
+                ),
+            ],
+            selected: {mode},
+            onSelectionChanged: (selection) =>
+                unawaited(context.read<ThemeCubit>().select(selection.first)),
+            style: SegmentedButton.styleFrom(
+              backgroundColor: colors.surfaceRaised,
+              foregroundColor: colors.textSecondary,
+              selectedBackgroundColor: colors.accentMuted,
+              selectedForegroundColor: colors.accent,
+              side: BorderSide(color: colors.border),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 
@@ -190,11 +240,13 @@ class _AccountCard extends StatelessWidget {
         children: [
           CircleAvatar(
             radius: 24.r,
-            backgroundColor: AppColors.accentMuted,
+            backgroundColor: context.colors.accentMuted,
             foregroundImage: photo == null ? null : NetworkImage(photo),
             child: Text(
               user.initials,
-              style: textTheme.titleSmall?.copyWith(color: AppColors.accent),
+              style: textTheme.titleSmall?.copyWith(
+                color: context.colors.accent,
+              ),
             ),
           ),
           SizedBox(width: AppSpacing.md.w),
@@ -312,7 +364,7 @@ class _BusinessSection extends StatelessWidget {
               Text(
                 'Switch',
                 style: textTheme.labelLarge?.copyWith(
-                  color: AppColors.accent,
+                  color: context.colors.accent,
                 ),
               ),
             ],

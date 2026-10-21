@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:auto_route/auto_route.dart';
 import 'package:business_ledger/core/di/injection.dart';
 import 'package:business_ledger/core/theme/app_colors.dart';
+import 'package:business_ledger/core/theme/app_palette.dart';
 import 'package:business_ledger/core/theme/app_spacing.dart';
 import 'package:business_ledger/core/widgets/app_async_view.dart';
 import 'package:business_ledger/core/widgets/app_button.dart';
@@ -198,7 +199,7 @@ class _FieldTile extends StatelessWidget {
           Icon(
             field.type.icon,
             size: 22.r,
-            color: field.archived ? AppColors.textTertiary : null,
+            color: field.archived ? context.colors.textTertiary : null,
           ),
           SizedBox(width: AppSpacing.md.w),
           Expanded(
@@ -208,7 +209,7 @@ class _FieldTile extends StatelessWidget {
                 Text(
                   field.label,
                   style: textTheme.titleSmall?.copyWith(
-                    color: field.archived ? AppColors.textSecondary : null,
+                    color: field.archived ? context.colors.textSecondary : null,
                   ),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,

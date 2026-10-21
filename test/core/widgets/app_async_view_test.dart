@@ -1,6 +1,6 @@
 import 'package:business_ledger/core/bloc/status.dart';
 import 'package:business_ledger/core/ledger/ledger_enums.dart';
-import 'package:business_ledger/core/theme/app_colors.dart';
+import 'package:business_ledger/core/theme/app_palette.dart';
 import 'package:business_ledger/core/widgets/app_async_view.dart';
 import 'package:business_ledger/core/widgets/app_error_state.dart';
 import 'package:business_ledger/core/widgets/app_loader.dart';
@@ -60,11 +60,16 @@ void main() {
     });
 
     test('paid is the income colour, cancelled the error colour', () {
-      expect(AppStatusChip.paymentColor(PaymentStatus.paid), AppColors.income);
-      expect(
-        AppStatusChip.transactionColor(TransactionStatus.cancelled),
-        AppColors.error,
-      );
+      for (final palette in [AppPalette.dark, AppPalette.light]) {
+        expect(
+          AppStatusChip.paymentColor(PaymentStatus.paid, palette),
+          palette.income,
+        );
+        expect(
+          AppStatusChip.transactionColor(TransactionStatus.cancelled, palette),
+          palette.error,
+        );
+      }
     });
   });
 }

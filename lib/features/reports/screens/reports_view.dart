@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:business_ledger/core/theme/app_colors.dart';
+import 'package:business_ledger/core/theme/app_palette.dart';
 import 'package:business_ledger/core/theme/app_spacing.dart';
 import 'package:business_ledger/core/widgets/app_error_state.dart';
 import 'package:business_ledger/core/widgets/app_fade_in.dart';
@@ -82,7 +82,7 @@ class ReportsView extends StatelessWidget {
               child: BreakdownList(
                 entries: state.incomeByCategory,
                 currency: state.currency,
-                colour: AppColors.income,
+                colour: context.colors.income,
                 onTap: (entry) => scopeTo(ReportDimension.category, entry),
               ),
             ),
@@ -92,7 +92,7 @@ class ReportsView extends StatelessWidget {
               child: BreakdownList(
                 entries: state.expenseByCategory,
                 currency: state.currency,
-                colour: AppColors.expense,
+                colour: context.colors.expense,
                 onTap: (entry) => scopeTo(ReportDimension.category, entry),
               ),
             ),
@@ -111,7 +111,7 @@ class ReportsView extends StatelessWidget {
                       BreakdownList(
                         entries: state.incomeByProject,
                         currency: state.currency,
-                        colour: AppColors.income,
+                        colour: context.colors.income,
                         onTap: (entry) =>
                             scopeTo(ReportDimension.project, entry),
                       ),
@@ -125,7 +125,7 @@ class ReportsView extends StatelessWidget {
                       BreakdownList(
                         entries: state.expenseByProject,
                         currency: state.currency,
-                        colour: AppColors.expense,
+                        colour: context.colors.expense,
                         onTap: (entry) =>
                             scopeTo(ReportDimension.project, entry),
                       ),
@@ -192,7 +192,7 @@ class _Totals extends StatelessWidget {
             label: scoped ? 'In (confirmed)' : 'Income (confirmed)',
             minor: totals.incomeMinor,
             currency: state.currency,
-            colour: AppColors.income,
+            colour: context.colors.income,
             icon: Icons.trending_up_rounded,
             loading: loading,
             compact: false,
@@ -201,7 +201,7 @@ class _Totals extends StatelessWidget {
             label: scoped ? 'Out (confirmed)' : 'Expenses (confirmed)',
             minor: totals.expenseMinor,
             currency: state.currency,
-            colour: AppColors.expense,
+            colour: context.colors.expense,
             icon: Icons.trending_down_rounded,
             loading: loading,
             compact: false,
@@ -211,7 +211,7 @@ class _Totals extends StatelessWidget {
             caption: 'Income − expenses',
             minor: totals.netMinor,
             currency: state.currency,
-            colour: AppColors.accent,
+            colour: context.colors.accent,
             icon: Icons.balance_rounded,
             loading: loading,
             compact: false,
@@ -221,7 +221,7 @@ class _Totals extends StatelessWidget {
               label: 'Cash received',
               minor: totals.cashInMinor,
               currency: state.currency,
-              colour: AppColors.income,
+              colour: context.colors.income,
               icon: Icons.south_west_rounded,
               loading: loading,
               compact: false,
@@ -230,7 +230,7 @@ class _Totals extends StatelessWidget {
               label: 'Cash paid',
               minor: totals.cashOutMinor,
               currency: state.currency,
-              colour: AppColors.expense,
+              colour: context.colors.expense,
               icon: Icons.north_east_rounded,
               loading: loading,
               compact: false,
@@ -240,7 +240,7 @@ class _Totals extends StatelessWidget {
               caption: 'Received − paid',
               minor: totals.netCashMinor,
               currency: state.currency,
-              colour: AppColors.info,
+              colour: context.colors.info,
               icon: Icons.account_balance_wallet_outlined,
               loading: loading,
               compact: false,

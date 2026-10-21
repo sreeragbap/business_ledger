@@ -1,4 +1,4 @@
-import 'package:business_ledger/core/theme/app_colors.dart';
+import 'package:business_ledger/core/theme/app_palette.dart';
 import 'package:business_ledger/core/theme/app_radius.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
@@ -23,14 +23,14 @@ class AppLogo extends StatelessWidget {
         height: side,
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular((AppRadius.lg * size / 72).r),
-          gradient: const LinearGradient(
+          gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
-            colors: [AppColors.accent, AppColors.accentPressed],
+            colors: [context.colors.accent, context.colors.accentPressed],
           ),
           boxShadow: [
             BoxShadow(
-              color: AppColors.accent.withValues(alpha: 0.25),
+              color: context.colors.accent.withValues(alpha: 0.25),
               blurRadius: side * 0.45,
               spreadRadius: -side * 0.1,
               offset: Offset(0, side * 0.12),
@@ -40,7 +40,7 @@ class AppLogo extends StatelessWidget {
         child: Icon(
           Icons.menu_book_rounded,
           size: side * 0.5,
-          color: AppColors.onAccent,
+          color: context.colors.onAccent,
         ),
       ),
     );

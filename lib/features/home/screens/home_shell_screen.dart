@@ -2,8 +2,8 @@ import 'dart:async';
 
 import 'package:auto_route/auto_route.dart';
 import 'package:business_ledger/core/router/app_router.dart';
-import 'package:business_ledger/core/theme/app_colors.dart';
 import 'package:business_ledger/core/theme/app_motion.dart';
+import 'package:business_ledger/core/theme/app_palette.dart';
 import 'package:business_ledger/features/business/logic/business_scope_cubit/business_scope_cubit.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -67,8 +67,8 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
           return Scaffold(
             body: child,
             bottomNavigationBar: DecoratedBox(
-              decoration: const BoxDecoration(
-                border: Border(top: BorderSide(color: AppColors.divider)),
+              decoration: BoxDecoration(
+                border: Border(top: BorderSide(color: context.colors.divider)),
               ),
               child: NavigationBar(
                 selectedIndex: tabsRouter.activeIndex,

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:auto_route/auto_route.dart';
 import 'package:business_ledger/core/di/injection.dart';
 import 'package:business_ledger/core/theme/app_colors.dart';
+import 'package:business_ledger/core/theme/app_palette.dart';
 import 'package:business_ledger/core/theme/app_spacing.dart';
 import 'package:business_ledger/core/widgets/app_async_view.dart';
 import 'package:business_ledger/core/widgets/app_button.dart';
@@ -289,7 +290,9 @@ class _CategoryTile extends StatelessWidget {
                 Text(
                   category.name,
                   style: textTheme.titleSmall?.copyWith(
-                    color: category.archived ? AppColors.textSecondary : null,
+                    color: category.archived
+                        ? context.colors.textSecondary
+                        : null,
                   ),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
@@ -366,7 +369,7 @@ class _Menu extends StatelessWidget {
           // Proving nothing uses it is the server's job: never queued.
           enabled: reachable,
           child: reachable
-              ? const Text('Delete', style: TextStyle(color: AppColors.error))
+              ? Text('Delete', style: TextStyle(color: context.colors.error))
               : const Text('Delete · ${CloudRequired.reason}'),
         ),
       ],

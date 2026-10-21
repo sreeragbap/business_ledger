@@ -1,4 +1,4 @@
-import 'package:business_ledger/core/theme/app_colors.dart';
+import 'package:business_ledger/core/theme/app_palette.dart';
 import 'package:business_ledger/core/theme/app_spacing.dart';
 import 'package:business_ledger/core/widgets/app_bottom_sheet.dart';
 import 'package:business_ledger/core/widgets/app_text_field.dart';
@@ -157,11 +157,11 @@ class _OptionTile extends StatelessWidget {
         contentPadding: EdgeInsets.symmetric(horizontal: AppSpacing.xs.w),
         leading: icon == null
             ? null
-            : Icon(icon, color: iconColour ?? AppColors.textSecondary),
+            : Icon(icon, color: iconColour ?? context.colors.textSecondary),
         title: Text(label),
         subtitle: subtitle == null ? null : Text(subtitle!),
         trailing: selected
-            ? const Icon(Icons.check_rounded, color: AppColors.accent)
+            ? Icon(Icons.check_rounded, color: context.colors.accent)
             : null,
         onTap: onTap,
       ),

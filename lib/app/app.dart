@@ -6,11 +6,13 @@ import 'package:business_ledger/core/responsive/app_screen_util.dart';
 import 'package:business_ledger/core/router/app_router.dart';
 import 'package:business_ledger/core/sync/sync_engine.dart';
 import 'package:business_ledger/core/sync/sync_status.dart';
+import 'package:business_ledger/core/theme/app_motion.dart';
 import 'package:business_ledger/core/theme/app_theme.dart';
 import 'package:business_ledger/core/widgets/app_snack_bar.dart';
 import 'package:business_ledger/features/app_lock/logic/app_lock_cubit/app_lock_cubit.dart';
 import 'package:business_ledger/features/auth/logic/auth_cubit/auth_cubit.dart';
 import 'package:business_ledger/features/business/logic/business_scope_cubit/business_scope_cubit.dart';
+import 'package:business_ledger/features/settings/logic/theme_cubit/theme_cubit.dart';
 import 'package:business_ledger/features/sync/logic/sync_cubit/sync_cubit.dart';
 import 'package:business_ledger/features/sync/widgets/sync_status_banner.dart';
 import 'package:flutter/material.dart';
@@ -91,6 +93,7 @@ class _AppState extends State<App> {
         BlocProvider<BusinessScopeCubit>.value(
           value: getIt<BusinessScopeCubit>(),
         ),
+        BlocProvider<ThemeCubit>.value(value: getIt<ThemeCubit>()),
       ],
       child: MultiBlocListener(
         listeners: [
@@ -105,28 +108,37 @@ class _AppState extends State<App> {
         ],
         // Above MaterialApp so `.sp` resolves while the theme is built.
         child: AppScreenUtil(
-          builder: (context) => AnnotatedRegion<SystemUiOverlayStyle>(
-            value: SystemUiOverlayStyle.light,
-            child: MaterialApp.router(
+          builder: (context) => BlocBuilder<ThemeCubit, ThemeMode>(
+            builder: (context, themeMode) => MaterialApp.router(
               title: AppConfig.appName,
               debugShowCheckedModeBanner: AppConfig.showDebugBanner,
-              theme: AppTheme.dark,
+              theme: AppTheme.light,
               darkTheme: AppTheme.dark,
-              themeMode: ThemeMode.dark,
+              themeMode: themeMode,
+              // A light/dark switch fades over the standard transition.
+              themeAnimationDuration: AppMotion.medium,
+              themeAnimationCurve: AppMotion.standard,
               routerConfig: _router.config(),
-              builder: (context, child) => _LateWriteFailures(
-                child: _SyncFrame(
-                  onTap: () {
-                    if (!_auth.state.isAuthenticated ||
-                        _isInStack(SyncRoute.name) ||
-                        _isInStack(LockRoute.name)) {
-                      return;
-                    }
-                    unawaited(_router.push(const SyncRoute()));
-                  },
-                  child: child ?? const SizedBox.shrink(),
-                ),
-              ),
+              // Status-bar icons contrast with the active theme.
+              builder: (context, child) =>
+                  AnnotatedRegion<SystemUiOverlayStyle>(
+                    value: Theme.of(context).brightness == Brightness.dark
+                        ? SystemUiOverlayStyle.light
+                        : SystemUiOverlayStyle.dark,
+                    child: _LateWriteFailures(
+                      child: _SyncFrame(
+                        onTap: () {
+                          if (!_auth.state.isAuthenticated ||
+                              _isInStack(SyncRoute.name) ||
+                              _isInStack(LockRoute.name)) {
+                            return;
+                          }
+                          unawaited(_router.push(const SyncRoute()));
+                        },
+                        child: child ?? const SizedBox.shrink(),
+                      ),
+                    ),
+                  ),
             ),
           ),
         ),

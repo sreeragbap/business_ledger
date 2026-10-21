@@ -1,7 +1,7 @@
 import 'dart:async';
 
 import 'package:business_ledger/core/ledger/ledger_enums.dart';
-import 'package:business_ledger/core/theme/app_colors.dart';
+import 'package:business_ledger/core/theme/app_palette.dart';
 import 'package:business_ledger/core/theme/app_spacing.dart';
 import 'package:business_ledger/core/widgets/app_bottom_sheet.dart';
 import 'package:business_ledger/features/reports/domain/models/calendar_day.dart';
@@ -56,7 +56,7 @@ class _RangeSheet extends StatelessWidget {
           selected: current.preset == DateRangePreset.custom,
           trailing: Icon(
             Icons.date_range_rounded,
-            color: AppColors.textSecondary,
+            color: context.colors.textSecondary,
             size: 20.r,
           ),
           onTap: () async {
@@ -104,11 +104,15 @@ class _RangeSheet extends StatelessWidget {
     title: Text(title),
     subtitle: Text(subtitle),
     selected: selected,
-    selectedColor: AppColors.accent,
+    selectedColor: context.colors.accent,
     trailing:
         trailing ??
         (selected
-            ? Icon(Icons.check_rounded, color: AppColors.accent, size: 20.r)
+            ? Icon(
+                Icons.check_rounded,
+                color: context.colors.accent,
+                size: 20.r,
+              )
             : null),
     onTap: onTap,
   );

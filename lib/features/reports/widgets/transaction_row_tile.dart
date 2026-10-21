@@ -2,6 +2,7 @@ import 'package:business_ledger/core/ledger/ledger_enums.dart';
 import 'package:business_ledger/core/money/currency.dart';
 import 'package:business_ledger/core/money/money.dart';
 import 'package:business_ledger/core/theme/app_colors.dart';
+import 'package:business_ledger/core/theme/app_palette.dart';
 import 'package:business_ledger/core/theme/app_radius.dart';
 import 'package:business_ledger/core/theme/app_spacing.dart';
 import 'package:business_ledger/core/theme/app_text_styles.dart';
@@ -42,7 +43,7 @@ class TransactionRowTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
     final inflow = row.direction != Direction.outflow;
-    final colour = inflow ? AppColors.income : AppColors.expense;
+    final colour = inflow ? context.colors.income : context.colors.expense;
     final overdue = row.isOverdue(today);
     final amount = showOutstanding ? row.outstandingMinor : row.totalMinor;
 
@@ -99,7 +100,7 @@ class TransactionRowTile extends StatelessWidget {
                       Text(
                         meta,
                         style: textTheme.bodySmall?.copyWith(
-                          color: overdue ? AppColors.warning : null,
+                          color: overdue ? context.colors.warning : null,
                         ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,

@@ -1,5 +1,6 @@
 import 'package:business_ledger/core/ledger/ledger_enums.dart';
 import 'package:business_ledger/core/theme/app_colors.dart';
+import 'package:business_ledger/core/theme/app_palette.dart';
 import 'package:business_ledger/core/theme/app_radius.dart';
 import 'package:business_ledger/core/theme/app_spacing.dart';
 import 'package:business_ledger/core/widgets/app_bottom_sheet.dart';
@@ -87,10 +88,10 @@ class _ActionTile extends StatelessWidget {
     final enabled = action.enabled;
     final voided = action.existing?.voided ?? false;
     final colour = !enabled
-        ? AppColors.textDisabled
+        ? context.colors.textDisabled
         : voided
-        ? AppColors.error
-        : AppColors.accent;
+        ? context.colors.error
+        : context.colors.accent;
     final icon = switch (action.type) {
       DocumentType.invoice => Icons.request_quote_outlined,
       DocumentType.bill => Icons.receipt_long_outlined,
@@ -130,7 +131,7 @@ class _ActionTile extends StatelessWidget {
                   Text(
                     action.title,
                     style: textTheme.titleSmall?.copyWith(
-                      color: enabled ? null : AppColors.textDisabled,
+                      color: enabled ? null : context.colors.textDisabled,
                     ),
                   ),
                   SizedBox(height: AppSpacing.xxs.h),
@@ -138,7 +139,7 @@ class _ActionTile extends StatelessWidget {
                     action.disabledReason ?? action.subtitle,
                     style: textTheme.bodySmall?.copyWith(
                       color: action.disabledReason != null
-                          ? AppColors.warning
+                          ? context.colors.warning
                           : null,
                     ),
                   ),
@@ -149,7 +150,9 @@ class _ActionTile extends StatelessWidget {
               action.isIssued
                   ? Icons.chevron_right_rounded
                   : Icons.add_circle_outline_rounded,
-              color: enabled ? AppColors.textSecondary : AppColors.textDisabled,
+              color: enabled
+                  ? context.colors.textSecondary
+                  : context.colors.textDisabled,
             ),
           ],
         ),

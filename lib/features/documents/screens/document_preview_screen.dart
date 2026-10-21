@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:business_ledger/core/theme/app_colors.dart';
+import 'package:business_ledger/core/theme/app_palette.dart';
 import 'package:business_ledger/core/widgets/app_error_state.dart';
 import 'package:business_ledger/core/widgets/app_loader.dart';
 import 'package:business_ledger/core/widgets/app_snack_bar.dart';
@@ -51,7 +52,7 @@ class DocumentPreviewScreen extends StatelessWidget {
         builder: (context, state) {
           final document = state.document;
           return Scaffold(
-            backgroundColor: AppColors.background,
+            backgroundColor: context.colors.background,
             appBar: AppBar(
               title: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -128,10 +129,10 @@ class _Body extends StatelessWidget {
       canChangePageFormat: false,
       canDebug: false,
       pdfFileName: document.fileName,
-      scrollViewDecoration: const BoxDecoration(color: AppColors.background),
-      pdfPreviewPageDecoration: const BoxDecoration(
+      scrollViewDecoration: BoxDecoration(color: context.colors.background),
+      pdfPreviewPageDecoration: BoxDecoration(
         color: AppColors.white,
-        boxShadow: [BoxShadow(color: AppColors.scrim, blurRadius: 12)],
+        boxShadow: [BoxShadow(color: context.colors.scrim, blurRadius: 12)],
       ),
       loadingWidget: const AppLoader(),
       onError: (context, error) => const AppErrorState(

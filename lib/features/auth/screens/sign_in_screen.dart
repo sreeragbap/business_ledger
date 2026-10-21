@@ -4,7 +4,7 @@ import 'package:auto_route/auto_route.dart';
 import 'package:business_ledger/app/app_config.dart';
 import 'package:business_ledger/core/constants/app_strings.dart';
 import 'package:business_ledger/core/di/injection.dart';
-import 'package:business_ledger/core/theme/app_colors.dart';
+import 'package:business_ledger/core/theme/app_palette.dart';
 import 'package:business_ledger/core/theme/app_spacing.dart';
 import 'package:business_ledger/core/widgets/app_fade_in.dart';
 import 'package:business_ledger/core/widgets/app_logo.dart';
@@ -91,7 +91,7 @@ class SignInScreen extends StatelessWidget implements AutoRouteWrapper {
                       child: Text(
                         AppStrings.appTagline,
                         style: textTheme.bodyLarge?.copyWith(
-                          color: AppColors.textSecondary,
+                          color: context.colors.textSecondary,
                         ),
                       ),
                     ),
@@ -165,19 +165,22 @@ class _SellingPoint extends StatelessWidget {
           Container(
             padding: EdgeInsets.all(AppSpacing.sm.r),
             decoration: BoxDecoration(
-              color: AppColors.surfaceRaised,
+              color: context.colors.surfaceRaised,
               borderRadius: BorderRadius.circular(10.r),
-              border: Border.all(color: AppColors.border),
+              border: Border.all(color: context.colors.border),
             ),
-            child: Icon(icon, size: 18.r, color: AppColors.accent),
+            child: Icon(icon, size: 18.r, color: context.colors.accent),
           ),
           SizedBox(width: AppSpacing.md.w),
           Expanded(
             child: Text(
               text,
-              style: Theme.of(
-                context,
-              ).textTheme.bodyMedium?.copyWith(color: AppColors.textPrimary),
+              style:
+                  Theme.of(
+                    context,
+                  ).textTheme.bodyMedium?.copyWith(
+                    color: context.colors.textPrimary,
+                  ),
             ),
           ),
         ],
@@ -199,8 +202,8 @@ class _Glow extends StatelessWidget {
             center: const Alignment(-0.9, -1.1),
             radius: 1.1,
             colors: [
-              AppColors.accent.withValues(alpha: 0.12),
-              AppColors.background.withValues(alpha: 0),
+              context.colors.accent.withValues(alpha: 0.12),
+              context.colors.background.withValues(alpha: 0),
             ],
           ),
         ),

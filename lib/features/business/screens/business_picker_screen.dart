@@ -4,6 +4,7 @@ import 'package:auto_route/auto_route.dart';
 import 'package:business_ledger/core/di/injection.dart';
 import 'package:business_ledger/core/router/app_router.dart';
 import 'package:business_ledger/core/theme/app_colors.dart';
+import 'package:business_ledger/core/theme/app_palette.dart';
 import 'package:business_ledger/core/theme/app_spacing.dart';
 import 'package:business_ledger/core/widgets/app_async_view.dart';
 import 'package:business_ledger/core/widgets/app_button.dart';
@@ -171,22 +172,25 @@ class _Notice extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return AppCard(
-      color: AppColors.tint(AppColors.warning),
-      borderColor: AppColors.warning.withValues(alpha: 0.4),
+      color: AppColors.tint(context.colors.warning),
+      borderColor: context.colors.warning.withValues(alpha: 0.4),
       child: Row(
         children: [
           Icon(
             Icons.info_outline_rounded,
-            color: AppColors.warning,
+            color: context.colors.warning,
             size: 20.r,
           ),
           SizedBox(width: AppSpacing.md.w),
           Expanded(
             child: Text(
               message,
-              style: Theme.of(
-                context,
-              ).textTheme.bodyMedium?.copyWith(color: AppColors.textPrimary),
+              style:
+                  Theme.of(
+                    context,
+                  ).textTheme.bodyMedium?.copyWith(
+                    color: context.colors.textPrimary,
+                  ),
             ),
           ),
         ],

@@ -1,4 +1,4 @@
-import 'package:business_ledger/core/theme/app_colors.dart';
+import 'package:business_ledger/core/theme/app_palette.dart';
 import 'package:business_ledger/core/theme/app_spacing.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
@@ -34,11 +34,15 @@ class AppEmptyState extends StatelessWidget {
           children: [
             Container(
               padding: EdgeInsets.all(AppSpacing.lg.r),
-              decoration: const BoxDecoration(
-                color: AppColors.surfaceRaised,
+              decoration: BoxDecoration(
+                color: context.colors.surfaceRaised,
                 shape: BoxShape.circle,
               ),
-              child: Icon(icon, size: 32.r, color: AppColors.textSecondary),
+              child: Icon(
+                icon,
+                size: 32.r,
+                color: context.colors.textSecondary,
+              ),
             ),
             SizedBox(height: AppSpacing.lg.h),
             Text(

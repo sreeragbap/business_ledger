@@ -2,7 +2,7 @@ import 'dart:async';
 
 import 'package:auto_route/auto_route.dart';
 import 'package:business_ledger/core/di/injection.dart';
-import 'package:business_ledger/core/theme/app_colors.dart';
+import 'package:business_ledger/core/theme/app_palette.dart';
 import 'package:business_ledger/core/theme/app_spacing.dart';
 import 'package:business_ledger/core/widgets/app_async_view.dart';
 import 'package:business_ledger/core/widgets/app_bottom_sheet.dart';
@@ -77,8 +77,10 @@ class MembersScreen extends StatelessWidget implements AutoRouteWrapper {
         floatingActionButton: role.canManageMembers
             ? FloatingActionButton.extended(
                 // Member changes cannot be queued: explain instead.
-                backgroundColor: reachable ? null : AppColors.surfaceHigh,
-                foregroundColor: reachable ? null : AppColors.textSecondary,
+                backgroundColor: reachable ? null : context.colors.surfaceHigh,
+                foregroundColor: reachable
+                    ? null
+                    : context.colors.textSecondary,
                 tooltip: reachable ? null : CloudRequired.reason,
                 onPressed: reachable
                     ? () => unawaited(_showAddMember(context, role))
@@ -197,7 +199,7 @@ class _MemberTile extends StatelessWidget {
         children: [
           CircleAvatar(
             radius: 20.r,
-            backgroundColor: AppColors.surfaceHigh,
+            backgroundColor: context.colors.surfaceHigh,
             foregroundImage: photo.isEmpty ? null : NetworkImage(photo),
             child: Text(member.initials, style: textTheme.labelMedium),
           ),
@@ -249,11 +251,11 @@ class _MemberTile extends StatelessWidget {
                           child: Text('Make owner'),
                         ),
                       if (canManage)
-                        const PopupMenuItem(
+                        PopupMenuItem(
                           value: _MemberMenu.remove,
                           child: Text(
                             'Remove',
-                            style: TextStyle(color: AppColors.error),
+                            style: TextStyle(color: context.colors.error),
                           ),
                         ),
                     ],
@@ -350,7 +352,7 @@ class _RoleOption extends StatelessWidget {
         selected
             ? Icons.radio_button_checked_rounded
             : Icons.radio_button_off_rounded,
-        color: selected ? AppColors.accent : null,
+        color: selected ? context.colors.accent : null,
       ),
       title: Text(role.label),
       subtitle: Text(role.description),

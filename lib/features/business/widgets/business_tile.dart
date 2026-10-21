@@ -1,4 +1,4 @@
-import 'package:business_ledger/core/theme/app_colors.dart';
+import 'package:business_ledger/core/theme/app_palette.dart';
 import 'package:business_ledger/core/theme/app_spacing.dart';
 import 'package:business_ledger/core/widgets/app_card.dart';
 import 'package:business_ledger/features/business/domain/models/business.dart';
@@ -30,7 +30,7 @@ class BusinessTile extends StatelessWidget {
     ].join(' · ');
     return AppCard(
       onTap: onTap,
-      borderColor: selected ? AppColors.accent : null,
+      borderColor: selected ? context.colors.accent : null,
       padding: EdgeInsets.symmetric(
         horizontal: AppSpacing.lg.w,
         vertical: AppSpacing.md.h,
@@ -62,7 +62,7 @@ class BusinessTile extends StatelessWidget {
           if (selected)
             Icon(
               Icons.check_circle_rounded,
-              color: AppColors.accent,
+              color: context.colors.accent,
               size: 22.r,
             )
           else

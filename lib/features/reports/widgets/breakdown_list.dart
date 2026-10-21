@@ -1,7 +1,7 @@
 import 'package:business_ledger/core/money/currency.dart';
 import 'package:business_ledger/core/money/money.dart';
-import 'package:business_ledger/core/theme/app_colors.dart';
 import 'package:business_ledger/core/theme/app_motion.dart';
+import 'package:business_ledger/core/theme/app_palette.dart';
 import 'package:business_ledger/core/theme/app_radius.dart';
 import 'package:business_ledger/core/theme/app_spacing.dart';
 import 'package:business_ledger/core/theme/app_text_styles.dart';
@@ -63,7 +63,7 @@ class BreakdownList extends StatelessWidget {
               ),
             ),
             currency: currency,
-            colour: AppColors.textTertiary,
+            colour: context.colors.textTertiary,
           ),
       ],
     );
@@ -142,7 +142,7 @@ class _Row extends StatelessWidget {
                     builder: (context, value, _) => LinearProgressIndicator(
                       value: value,
                       color: colour,
-                      backgroundColor: AppColors.surfaceRaised,
+                      backgroundColor: context.colors.surfaceRaised,
                     ),
                   ),
                 ),

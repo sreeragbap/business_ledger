@@ -4,6 +4,7 @@ import 'package:business_ledger/core/ledger/ledger_enums.dart';
 import 'package:business_ledger/core/money/money.dart';
 import 'package:business_ledger/core/theme/app_colors.dart';
 import 'package:business_ledger/core/theme/app_motion.dart';
+import 'package:business_ledger/core/theme/app_palette.dart';
 import 'package:business_ledger/core/theme/app_radius.dart';
 import 'package:business_ledger/core/theme/app_spacing.dart';
 import 'package:business_ledger/core/theme/app_text_styles.dart';
@@ -312,7 +313,7 @@ class _Form extends StatelessWidget {
             label: category.name,
             subtitle: category.kind.description,
             icon: category.icon.icon,
-            iconColour: category.colour.color,
+            iconColour: category.colour.colorIn(context.colors),
           ),
       ],
     );
@@ -402,7 +403,7 @@ class _ErrorText extends StatelessWidget {
       text,
       style: Theme.of(
         context,
-      ).textTheme.bodySmall?.copyWith(color: AppColors.error),
+      ).textTheme.bodySmall?.copyWith(color: context.colors.error),
     ),
   );
 }
@@ -466,7 +467,7 @@ class _AmountSection extends StatelessWidget {
           Container(
             padding: EdgeInsets.all(AppSpacing.md.r),
             decoration: BoxDecoration(
-              color: AppColors.surfaceHigh,
+              color: context.colors.surfaceHigh,
               borderRadius: BorderRadius.circular(AppRadius.md.r),
             ),
             child: Row(
@@ -576,14 +577,14 @@ class _ConflictCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => AppCard(
-    color: AppColors.tint(AppColors.warning),
-    borderColor: AppColors.warning,
+    color: AppColors.tint(context.colors.warning),
+    borderColor: context.colors.warning,
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
           children: [
-            const Icon(Icons.sync_problem_rounded, color: AppColors.warning),
+            Icon(Icons.sync_problem_rounded, color: context.colors.warning),
             SizedBox(width: AppSpacing.sm.w),
             Expanded(
               child: Text(
@@ -665,9 +666,9 @@ class _ActionBar extends StatelessWidget {
               : 'Viewers cannot record transactions.';
         }
         return DecoratedBox(
-          decoration: const BoxDecoration(
-            color: AppColors.surface,
-            border: Border(top: BorderSide(color: AppColors.divider)),
+          decoration: BoxDecoration(
+            color: context.colors.surface,
+            border: Border(top: BorderSide(color: context.colors.divider)),
           ),
           child: SafeArea(
             top: false,

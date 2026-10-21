@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:business_ledger/core/theme/app_colors.dart';
+import 'package:business_ledger/core/theme/app_palette.dart';
 import 'package:business_ledger/core/theme/app_radius.dart';
 import 'package:business_ledger/core/theme/app_spacing.dart';
 import 'package:flutter/material.dart';
@@ -52,10 +52,10 @@ class _AppShimmerState extends State<AppShimmer>
       builder: (context, child) => ShaderMask(
         blendMode: BlendMode.srcATop,
         shaderCallback: (bounds) => LinearGradient(
-          colors: const [
-            AppColors.shimmerBase,
-            AppColors.shimmerHighlight,
-            AppColors.shimmerBase,
+          colors: [
+            context.colors.shimmerBase,
+            context.colors.shimmerHighlight,
+            context.colors.shimmerBase,
           ],
           stops: const [0.35, 0.5, 0.65],
           transform: _SlidingGradient(_controller.value),
@@ -98,7 +98,7 @@ class ShimmerBox extends StatelessWidget {
       width: width.isFinite ? width.w : width,
       height: height.h,
       decoration: BoxDecoration(
-        color: AppColors.shimmerBase,
+        color: context.colors.shimmerBase,
         borderRadius: BorderRadius.circular((radius ?? AppRadius.sm).r),
       ),
     );

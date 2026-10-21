@@ -5,6 +5,7 @@ import 'package:business_ledger/core/money/currency.dart';
 import 'package:business_ledger/core/sync/outbox_entry.dart';
 import 'package:business_ledger/core/theme/app_colors.dart';
 import 'package:business_ledger/core/theme/app_motion.dart';
+import 'package:business_ledger/core/theme/app_palette.dart';
 import 'package:business_ledger/core/theme/app_radius.dart';
 import 'package:business_ledger/core/theme/app_spacing.dart';
 import 'package:business_ledger/core/theme/app_text_styles.dart';
@@ -290,12 +291,14 @@ class _MenuRow extends StatelessWidget {
       Icon(
         icon,
         size: 20.r,
-        color: destructive ? AppColors.error : AppColors.textSecondary,
+        color: destructive
+            ? context.colors.error
+            : context.colors.textSecondary,
       ),
       SizedBox(width: AppSpacing.md.w),
       Text(
         label,
-        style: destructive ? const TextStyle(color: AppColors.error) : null,
+        style: destructive ? TextStyle(color: context.colors.error) : null,
       ),
     ],
   );
@@ -435,7 +438,7 @@ class _Content extends StatelessWidget {
           : ' on ${DateFormat('d MMM yyyy', 'en_US').format(tx.cancelledAt!)}';
       add(
         Icons.block_rounded,
-        AppColors.error,
+        context.colors.error,
         'VOID — cancelled$when. It no longer counts anywhere'
         '${tx.cancelReason.isEmpty ? '.' : '. Reason: ${tx.cancelReason}'}',
       );
@@ -443,7 +446,7 @@ class _Content extends StatelessWidget {
     if (tx.isDraft) {
       add(
         Icons.edit_note_rounded,
-        AppColors.textSecondary,
+        context.colors.textSecondary,
         tx.hasPendingWrites
             ? 'Draft saved on this device; it will sync when online. '
                   'Drafts count nowhere until confirmed.'
@@ -453,7 +456,7 @@ class _Content extends StatelessWidget {
     if (tx.isRefundEntry && tx.linkedTransactionId != null) {
       add(
         Icons.undo_rounded,
-        AppColors.refund,
+        context.colors.refund,
         'A refund recorded against another transaction. Its money is '
         'carried by the original.',
         action: TextButton(
@@ -466,7 +469,7 @@ class _Content extends StatelessWidget {
       final overdue = tx.isOverdue(state.today);
       add(
         overdue ? Icons.schedule_rounded : Icons.event_outlined,
-        overdue ? AppColors.warning : AppColors.info,
+        overdue ? context.colors.warning : context.colors.info,
         overdue
             ? 'Overdue — was due ${LedgerDates.format(tx.dueDate)}.'
             : 'Due ${LedgerDates.format(tx.dueDate)}.',
@@ -551,7 +554,7 @@ class _Header extends StatelessWidget {
   Widget build(BuildContext context) {
     final tx = transaction;
     final textTheme = Theme.of(context).textTheme;
-    final colour = transactionColour(tx);
+    final colour = transactionColour(tx, context.colors);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -625,7 +628,7 @@ class _TypeChip extends StatelessWidget {
       vertical: AppSpacing.xxs.h + 1,
     ),
     decoration: BoxDecoration(
-      border: Border.all(color: AppColors.border),
+      border: Border.all(color: context.colors.border),
       borderRadius: AppRadius.chip,
     ),
     child: Text(label, style: Theme.of(context).textTheme.labelSmall),
@@ -782,9 +785,9 @@ class _ActionBar extends StatelessWidget {
     }
 
     return DecoratedBox(
-      decoration: const BoxDecoration(
-        color: AppColors.surface,
-        border: Border(top: BorderSide(color: AppColors.divider)),
+      decoration: BoxDecoration(
+        color: context.colors.surface,
+        border: Border(top: BorderSide(color: context.colors.divider)),
       ),
       child: SafeArea(
         top: false,
@@ -855,7 +858,7 @@ class QueuedActionsCard extends StatelessWidget {
               Icon(
                 Icons.cloud_upload_outlined,
                 size: 18.r,
-                color: AppColors.warning,
+                color: context.colors.warning,
               ),
               SizedBox(width: AppSpacing.sm.w),
               Expanded(
@@ -884,8 +887,8 @@ class QueuedActionsCard extends StatelessWidget {
                           : Icons.schedule_rounded,
                       size: 16.r,
                       color: entry.isFailed
-                          ? AppColors.error
-                          : AppColors.textTertiary,
+                          ? context.colors.error
+                          : context.colors.textTertiary,
                     ),
                   ),
                   SizedBox(width: AppSpacing.sm.w),
@@ -893,7 +896,7 @@ class QueuedActionsCard extends StatelessWidget {
                     child: Text(
                       '${entry.label} — ${statusOf(entry)}',
                       style: textTheme.bodyMedium?.copyWith(
-                        color: entry.isFailed ? AppColors.error : null,
+                        color: entry.isFailed ? context.colors.error : null,
                       ),
                     ),
                   ),

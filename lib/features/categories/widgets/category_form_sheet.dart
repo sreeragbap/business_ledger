@@ -1,5 +1,5 @@
-import 'package:business_ledger/core/theme/app_colors.dart';
 import 'package:business_ledger/core/theme/app_motion.dart';
+import 'package:business_ledger/core/theme/app_palette.dart';
 import 'package:business_ledger/core/theme/app_spacing.dart';
 import 'package:business_ledger/core/widgets/app_bottom_sheet.dart';
 import 'package:business_ledger/core/widgets/app_button.dart';
@@ -144,7 +144,7 @@ class _CategoryFormState extends State<CategoryForm> {
                 child: Icon(
                   icon.icon,
                   size: 20.r,
-                  color: icon == _icon ? _colour.color : null,
+                  color: icon == _icon ? _colour.colorIn(context.colors) : null,
                 ),
               ),
           ],
@@ -165,7 +165,7 @@ class _CategoryFormState extends State<CategoryForm> {
                   width: 20.r,
                   height: 20.r,
                   decoration: BoxDecoration(
-                    color: colour.color,
+                    color: colour.colorIn(context.colors),
                     shape: BoxShape.circle,
                   ),
                 ),
@@ -233,10 +233,10 @@ class _Selectable extends StatelessWidget {
           height: 40.r,
           alignment: Alignment.center,
           decoration: BoxDecoration(
-            color: AppColors.surface,
+            color: context.colors.surface,
             shape: BoxShape.circle,
             border: Border.all(
-              color: selected ? AppColors.accent : AppColors.border,
+              color: selected ? context.colors.accent : context.colors.border,
               width: selected ? 2 : 1,
             ),
           ),

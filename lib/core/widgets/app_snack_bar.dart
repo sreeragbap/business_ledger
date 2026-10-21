@@ -1,16 +1,21 @@
-import 'package:business_ledger/core/theme/app_colors.dart';
+import 'package:business_ledger/core/theme/app_palette.dart';
 import 'package:business_ledger/core/theme/app_spacing.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 
 enum AppSnackBarKind {
-  info(Icons.info_outline_rounded, AppColors.info),
-  success(Icons.check_circle_outline_rounded, AppColors.income),
-  error(Icons.error_outline_rounded, AppColors.error);
+  info(Icons.info_outline_rounded),
+  success(Icons.check_circle_outline_rounded),
+  error(Icons.error_outline_rounded);
 
-  const AppSnackBarKind(this.icon, this.color);
+  const AppSnackBarKind(this.icon);
   final IconData icon;
-  final Color color;
+
+  Color colorIn(AppPalette palette) => switch (this) {
+    info => palette.info,
+    success => palette.income,
+    error => palette.error,
+  };
 }
 
 /// Replaces any visible snack bar with [message].
@@ -26,7 +31,7 @@ void showAppSnackBar(
       SnackBar(
         content: Row(
           children: [
-            Icon(kind.icon, color: kind.color, size: 20.r),
+            Icon(kind.icon, color: kind.colorIn(context.colors), size: 20.r),
             SizedBox(width: AppSpacing.md.w),
             Expanded(child: Text(message)),
           ],

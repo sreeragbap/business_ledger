@@ -1,4 +1,5 @@
 import 'package:business_ledger/core/theme/app_colors.dart';
+import 'package:business_ledger/core/theme/app_palette.dart';
 import 'package:business_ledger/features/categories/domain/const/category_style.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
@@ -24,7 +25,9 @@ class CategoryIconBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colour = muted ? AppColors.textTertiary : this.colour.color;
+    final colour = muted
+        ? context.colors.textTertiary
+        : this.colour.colorIn(context.colors);
     return Container(
       width: size.r,
       height: size.r,

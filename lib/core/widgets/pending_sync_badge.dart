@@ -1,6 +1,7 @@
 import 'package:business_ledger/core/sync/outbox_entry.dart';
 import 'package:business_ledger/core/theme/app_colors.dart';
 import 'package:business_ledger/core/theme/app_motion.dart';
+import 'package:business_ledger/core/theme/app_palette.dart';
 import 'package:business_ledger/core/theme/app_radius.dart';
 import 'package:business_ledger/core/theme/app_spacing.dart';
 import 'package:flutter/material.dart';
@@ -19,7 +20,7 @@ class PendingSyncBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final failed = mark == SyncMark.failed;
-    final colour = failed ? AppColors.error : AppColors.warning;
+    final colour = failed ? context.colors.error : context.colors.warning;
     return AnimatedSwitcher(
       duration: AppMotion.medium,
       child: mark == SyncMark.none

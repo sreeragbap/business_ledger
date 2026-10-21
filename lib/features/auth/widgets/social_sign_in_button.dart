@@ -1,5 +1,6 @@
 import 'package:business_ledger/core/theme/app_colors.dart';
 import 'package:business_ledger/core/theme/app_motion.dart';
+import 'package:business_ledger/core/theme/app_palette.dart';
 import 'package:business_ledger/core/theme/app_radius.dart';
 import 'package:business_ledger/core/theme/app_spacing.dart';
 import 'package:business_ledger/features/auth/domain/const/social_sign_in_method.dart';
@@ -23,8 +24,8 @@ class SocialSignInButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isApple = method == SocialSignInMethod.apple;
-    final background = isApple ? AppColors.white : AppColors.surfaceRaised;
-    final foreground = isApple ? AppColors.black : AppColors.textPrimary;
+    final background = isApple ? AppColors.white : context.colors.surfaceRaised;
+    final foreground = isApple ? AppColors.black : context.colors.textPrimary;
 
     return Semantics(
       button: true,
@@ -46,7 +47,7 @@ class SocialSignInButton extends StatelessWidget {
               borderRadius: AppRadius.button,
               side: isApple
                   ? BorderSide.none
-                  : const BorderSide(color: AppColors.borderStrong),
+                  : BorderSide(color: context.colors.borderStrong),
             ),
           ),
           child: AnimatedSwitcher(

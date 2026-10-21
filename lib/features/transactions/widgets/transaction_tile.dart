@@ -3,6 +3,7 @@ import 'package:business_ledger/core/money/currency.dart';
 import 'package:business_ledger/core/money/money.dart';
 import 'package:business_ledger/core/sync/outbox_entry.dart';
 import 'package:business_ledger/core/theme/app_colors.dart';
+import 'package:business_ledger/core/theme/app_palette.dart';
 import 'package:business_ledger/core/theme/app_radius.dart';
 import 'package:business_ledger/core/theme/app_spacing.dart';
 import 'package:business_ledger/core/theme/app_text_styles.dart';
@@ -20,11 +21,11 @@ abstract final class TransactionHeroTags {
 }
 
 /// The colour that carries a transaction's direction and state.
-Color transactionColour(LedgerTransaction tx) {
-  if (tx.isCancelled) return AppColors.textTertiary;
-  if (tx.isRefundEntry) return AppColors.refund;
-  if (tx.isDraft) return AppColors.textSecondary;
-  return tx.isInflow ? AppColors.income : AppColors.expense;
+Color transactionColour(LedgerTransaction tx, AppPalette palette) {
+  if (tx.isCancelled) return palette.textTertiary;
+  if (tx.isRefundEntry) return palette.refund;
+  if (tx.isDraft) return palette.textSecondary;
+  return tx.isInflow ? palette.income : palette.expense;
 }
 
 /// `+₹1,200.00` / `−₹1,200.00`: the sign says the direction without colour.
@@ -60,7 +61,7 @@ class TransactionTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final tx = transaction;
     final textTheme = Theme.of(context).textTheme;
-    final colour = transactionColour(tx);
+    final colour = transactionColour(tx, context.colors);
     final overdue = tx.isOverdue(today);
     final amount = signedAmount(tx, currency);
     final meta = [
@@ -97,7 +98,7 @@ class TransactionTile extends StatelessWidget {
       overflow: TextOverflow.ellipsis,
       style: textTheme.titleSmall?.copyWith(
         fontStyle: tx.isDraft ? FontStyle.italic : null,
-        color: tx.isCancelled ? AppColors.textSecondary : null,
+        color: tx.isCancelled ? context.colors.textSecondary : null,
       ),
     );
 
@@ -134,7 +135,7 @@ class TransactionTile extends StatelessWidget {
                     color: AppColors.tint(colour),
                     borderRadius: BorderRadius.circular(AppRadius.md.r),
                     border: tx.isDraft
-                        ? Border.all(color: AppColors.borderStrong)
+                        ? Border.all(color: context.colors.borderStrong)
                         : null,
                   ),
                   child: Icon(icon, color: colour, size: 20.r),
@@ -158,7 +159,7 @@ class TransactionTile extends StatelessWidget {
                             Icon(
                               Icons.cloud_upload_outlined,
                               size: 13.r,
-                              color: AppColors.textTertiary,
+                              color: context.colors.textTertiary,
                             ),
                             SizedBox(width: AppSpacing.xs.w),
                           ],
@@ -189,7 +190,7 @@ class TransactionTile extends StatelessWidget {
                           Text(
                             date,
                             style: textTheme.bodySmall?.copyWith(
-                              color: overdue ? AppColors.warning : null,
+                              color: overdue ? context.colors.warning : null,
                             ),
                           ),
                           SizedBox(width: AppSpacing.xs.w),
