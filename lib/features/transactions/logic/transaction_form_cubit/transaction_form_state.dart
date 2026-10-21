@@ -31,6 +31,7 @@ class TransactionFormState extends Equatable {
     this.online = true,
     this.mode = TransactionFormMode.create,
     this.draft,
+    this.initialDraft,
     this.original,
     this.persisted = false,
     this.lineKeys = const [],
@@ -56,6 +57,14 @@ class TransactionFormState extends Equatable {
 
   /// `null` while an existing entry loads.
   final TransactionDraft? draft;
+
+  /// The draft as the form opened (blank, or the stored entry). Leaving
+  /// with [draft] different from it asks before discarding the changes.
+  final TransactionDraft? initialDraft;
+
+  /// The user changed something and has not saved it yet.
+  bool get hasUnsavedChanges =>
+      outcome == null && draft != null && draft != initialDraft;
 
   /// The stored entry being edited.
   final LedgerTransaction? original;
@@ -180,6 +189,7 @@ class TransactionFormState extends Equatable {
     bool? online,
     TransactionFormMode? mode,
     TransactionDraft? draft,
+    TransactionDraft? initialDraft,
     LedgerTransaction? original,
     bool? persisted,
     List<int>? lineKeys,
@@ -199,6 +209,7 @@ class TransactionFormState extends Equatable {
     online: online ?? this.online,
     mode: mode ?? this.mode,
     draft: draft ?? this.draft,
+    initialDraft: initialDraft ?? this.initialDraft,
     original: original ?? this.original,
     persisted: persisted ?? this.persisted,
     lineKeys: lineKeys ?? this.lineKeys,
@@ -221,6 +232,7 @@ class TransactionFormState extends Equatable {
     online,
     mode,
     draft,
+    initialDraft,
     original,
     persisted,
     lineKeys,

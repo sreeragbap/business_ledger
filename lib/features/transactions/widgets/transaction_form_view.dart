@@ -10,6 +10,7 @@ import 'package:business_ledger/core/theme/app_spacing.dart';
 import 'package:business_ledger/core/theme/app_text_styles.dart';
 import 'package:business_ledger/core/widgets/app_button.dart';
 import 'package:business_ledger/core/widgets/app_card.dart';
+import 'package:business_ledger/core/widgets/app_confirm_dialog.dart';
 import 'package:business_ledger/core/widgets/app_error_state.dart';
 import 'package:business_ledger/core/widgets/app_loader.dart';
 import 'package:business_ledger/core/widgets/app_money_field.dart';
@@ -60,31 +61,66 @@ class TransactionFormView extends StatelessWidget {
           ),
         ),
       ],
-      child: BlocBuilder<TransactionFormCubit, TransactionFormState>(
-        buildWhen: (p, c) =>
-            p.mode != c.mode ||
-            p.loadStatus != c.loadStatus ||
-            (p.draft == null) != (c.draft == null),
-        builder: (context, state) {
-          final title = switch (state.mode) {
-            TransactionFormMode.create => 'New transaction',
-            TransactionFormMode.editDraft => 'Edit draft',
-            TransactionFormMode.editConfirmed => 'Edit transaction',
-          };
-          return Scaffold(
-            appBar: AppBar(title: Text(title)),
-            body: state.draft != null
-                ? const _Form()
-                : state.loadStatus.isFailure
-                ? AppErrorState(message: state.loadStatus.message)
-                : const AppLoader(),
-            bottomNavigationBar: state.draft == null
-                ? null
-                : const _ActionBar(),
-          );
-        },
+      // Leaving with unsaved changes asks first: back button, back gesture
+      // and the app bar's back arrow all go through this.
+      child: BlocSelector<TransactionFormCubit, TransactionFormState, bool>(
+        selector: (state) => state.hasUnsavedChanges,
+        builder: (context, unsaved) => PopScope(
+          canPop: !unsaved,
+          onPopInvokedWithResult: (didPop, _) {
+            if (!didPop) unawaited(_confirmLeave(context));
+          },
+          child: BlocBuilder<TransactionFormCubit, TransactionFormState>(
+            buildWhen: (p, c) =>
+                p.mode != c.mode ||
+                p.loadStatus != c.loadStatus ||
+                (p.draft == null) != (c.draft == null),
+            builder: (context, state) {
+              final title = switch (state.mode) {
+                TransactionFormMode.create => 'New transaction',
+                TransactionFormMode.editDraft => 'Edit draft',
+                TransactionFormMode.editConfirmed => 'Edit transaction',
+              };
+              return Scaffold(
+                appBar: AppBar(title: Text(title)),
+                body: state.draft != null
+                    ? const _Form()
+                    : state.loadStatus.isFailure
+                    ? AppErrorState(message: state.loadStatus.message)
+                    : const AppLoader(),
+                bottomNavigationBar: state.draft == null
+                    ? null
+                    : const _ActionBar(),
+              );
+            },
+          ),
+        ),
       ),
     );
+  }
+
+  /// Pops after the user agrees to discard. Re-reads the state: a save that
+  /// just finished pops in the same frame, before [PopScope] has rebuilt.
+  static Future<void> _confirmLeave(BuildContext context) async {
+    final state = context.read<TransactionFormCubit>().state;
+    final navigator = Navigator.of(context);
+    if (!state.hasUnsavedChanges) {
+      navigator.pop();
+      return;
+    }
+    final creating = state.mode == TransactionFormMode.create;
+    final discard = await showAppConfirmDialog(
+      context: context,
+      title: creating ? 'Discard this transaction?' : 'Discard your changes?',
+      message: creating
+          ? 'What you entered will be lost.'
+          : 'Your edits will be lost.',
+      confirmLabel: 'Discard',
+      cancelLabel: 'Keep editing',
+      destructive: true,
+    );
+    // Navigator.pop skips PopScope, which would otherwise ask again.
+    if (discard && navigator.mounted) navigator.pop();
   }
 }
 

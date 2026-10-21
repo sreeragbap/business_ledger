@@ -110,15 +110,12 @@ class TransactionFormCubit extends Cubit<TransactionFormState> {
       final type = initialType != null && initialType.isCreatable
           ? initialType
           : TransactionType.expense;
-      emit(
-        state.copyWith(
-          draft: TransactionDraft.blank(
-            id: _repository.newTransactionId(businessId),
-            type: type,
-            date: _today,
-          ),
-        ),
+      final blank = TransactionDraft.blank(
+        id: _repository.newTransactionId(businessId),
+        type: type,
+        date: _today,
       );
+      emit(state.copyWith(draft: blank, initialDraft: blank));
       return;
     }
     await _load(businessId, transactionId);
@@ -208,6 +205,7 @@ class TransactionFormCubit extends Cubit<TransactionFormState> {
                 : TransactionFormMode.editConfirmed,
             original: tx,
             draft: draft,
+            initialDraft: draft,
             persisted: true,
             lineKeys: _keysFor(draft.lineItems.length),
             errors: const {},

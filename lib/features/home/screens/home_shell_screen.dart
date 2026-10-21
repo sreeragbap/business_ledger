@@ -4,6 +4,7 @@ import 'package:auto_route/auto_route.dart';
 import 'package:business_ledger/core/router/app_router.dart';
 import 'package:business_ledger/core/theme/app_motion.dart';
 import 'package:business_ledger/core/theme/app_palette.dart';
+import 'package:business_ledger/core/widgets/app_exit_guard.dart';
 import 'package:business_ledger/features/business/logic/business_scope_cubit/business_scope_cubit.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -51,40 +52,47 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
       listener: (context, _) => unawaited(
         context.router.root.replaceAll([const BusinessPickerRoute()]),
       ),
-      child: AutoTabsRouter(
-        routes: const [
-          DashboardRoute(),
-          TransactionsRoute(),
-          ReportsRoute(),
-          SettingsRoute(),
-        ],
-        duration: AppMotion.medium,
-        curve: AppMotion.standard,
-        transitionBuilder: (context, child, animation) =>
-            FadeTransition(opacity: animation, child: child),
-        builder: (context, child) {
-          final tabsRouter = AutoTabsRouter.of(context);
-          return Scaffold(
-            body: child,
-            bottomNavigationBar: DecoratedBox(
-              decoration: BoxDecoration(
-                border: Border(top: BorderSide(color: context.colors.divider)),
+      // Back on another tab returns to the dashboard (homeIndex); back on
+      // the dashboard asks for a second press before leaving the app.
+      child: AppExitGuard(
+        child: AutoTabsRouter(
+          homeIndex: 0,
+          routes: const [
+            DashboardRoute(),
+            TransactionsRoute(),
+            ReportsRoute(),
+            SettingsRoute(),
+          ],
+          duration: AppMotion.medium,
+          curve: AppMotion.standard,
+          transitionBuilder: (context, child, animation) =>
+              FadeTransition(opacity: animation, child: child),
+          builder: (context, child) {
+            final tabsRouter = AutoTabsRouter.of(context);
+            return Scaffold(
+              body: child,
+              bottomNavigationBar: DecoratedBox(
+                decoration: BoxDecoration(
+                  border: Border(
+                    top: BorderSide(color: context.colors.divider),
+                  ),
+                ),
+                child: NavigationBar(
+                  selectedIndex: tabsRouter.activeIndex,
+                  onDestinationSelected: tabsRouter.setActiveIndex,
+                  destinations: [
+                    for (final tab in _tabs)
+                      NavigationDestination(
+                        icon: Icon(tab.icon),
+                        selectedIcon: Icon(tab.selectedIcon),
+                        label: tab.label,
+                      ),
+                  ],
+                ),
               ),
-              child: NavigationBar(
-                selectedIndex: tabsRouter.activeIndex,
-                onDestinationSelected: tabsRouter.setActiveIndex,
-                destinations: [
-                  for (final tab in _tabs)
-                    NavigationDestination(
-                      icon: Icon(tab.icon),
-                      selectedIcon: Icon(tab.selectedIcon),
-                      label: tab.label,
-                    ),
-                ],
-              ),
-            ),
-          );
-        },
+            );
+          },
+        ),
       ),
     );
   }

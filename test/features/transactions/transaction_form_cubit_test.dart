@@ -468,4 +468,37 @@ void main() {
     tracker.settle(null);
     expect(tracker.isPending('b'), isFalse);
   });
+
+  group('unsaved changes', () {
+    test('a new form is clean until something is typed', () async {
+      final cubit = await start();
+      expect(cubit.state.hasUnsavedChanges, isFalse);
+
+      cubit.setDescription('Diesel');
+      expect(cubit.state.hasUnsavedChanges, isTrue);
+
+      // Back to how it opened: nothing to lose.
+      cubit.setDescription('');
+      expect(cubit.state.hasUnsavedChanges, isFalse);
+      await cubit.close();
+    });
+
+    test('saving clears it, so leaving after a save does not ask', () async {
+      final cubit = await start()
+        ..setTotal(1200);
+      expect(cubit.state.hasUnsavedChanges, isTrue);
+      await cubit.saveDraft();
+      expect(cubit.state.hasUnsavedChanges, isFalse);
+      await cubit.close();
+    });
+
+    test('an edit starts clean and turns dirty on change', () async {
+      repository.emitTransaction(confirmedSale(version: 7));
+      final cubit = await start(transactionId: 't1');
+      expect(cubit.state.hasUnsavedChanges, isFalse);
+      cubit.setDescription('Cement bags (50)');
+      expect(cubit.state.hasUnsavedChanges, isTrue);
+      await cubit.close();
+    });
+  });
 }
