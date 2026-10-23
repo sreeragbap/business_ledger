@@ -268,6 +268,13 @@ void main() {
       expect(error.kind, AppErrorKind.alreadyExists);
       expect(error.message, contains('already exists'));
     });
+
+    test('a provider switched off in Firebase says so', () {
+      final error = AppException.fromAuth(
+        FirebaseAuthException(code: 'operation-not-allowed'),
+      );
+      expect(error.message, contains('sign-in method'));
+    });
   });
 
   group('AppException.from', () {

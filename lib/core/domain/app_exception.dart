@@ -231,6 +231,11 @@ class AppException extends Equatable implements Exception {
         AppErrorKind.unauthenticated,
         'Your sign-in could not be verified. Please try again.',
       ),
+      // The provider is switched off in Firebase Authentication.
+      'operation-not-allowed' => (
+        AppErrorKind.unknown,
+        "This sign-in method isn't available yet. Try another one.",
+      ),
       'too-many-requests' => (
         AppErrorKind.unknown,
         'Too many attempts. Please wait a moment and try again.',
