@@ -16,7 +16,7 @@ dependencies:
   crypto: ^3.0.7
   # On-device store (SQLite): every screen reads from it, so the app works
   # offline; the sync engine keeps it in step with Supabase.
-  drift: ^2.34.4
+  drift: ^2.35.2
   drift_flutter: ^0.3.1
   equatable: ^3.0.0
   firebase_auth: ^6.7.0
@@ -51,7 +51,7 @@ dependencies:
 dev_dependencies:
   auto_route_generator: ^10.6.0
   bloc_test: ^10.0.0
-  build_runner: ^2.15.1
+  build_runner: ^2.16.1
   drift_dev: ^2.34.0
   flutter_launcher_icons: ^0.14.4
   flutter_test:
