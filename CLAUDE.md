@@ -208,6 +208,8 @@ dart format lib test            # CI rejects unformatted code
 flutter analyze                 # must report no issues
 flutter test
 flutter run -t lib/main_dev.dart        # real Firebase sign-in + Supabase
+dart run flutter_launcher_icons   # app icons from assets/icon (then revert its
+                                  # pbxproj SWIFT_ASSET_SYMBOL_EXTENSIONS change)
 
 # Database (no Docker needed: tests run Postgres in-process via PGlite)
 cd supabase/tests && npm test

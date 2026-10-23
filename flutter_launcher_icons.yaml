@@ -1,0 +1,20 @@
+# App icon. Sources (SVG + rendered PNG) and their generator live in
+# assets/icon/; regenerate the platform icons with
+#   dart run flutter_launcher_icons
+flutter_launcher_icons:
+  image_path: assets/icon/icon.png
+
+  # Android: legacy icon (API 24–25), adaptive layers (26+), themed icon (33+).
+  android: true
+  min_sdk_android: 24
+  adaptive_icon_background: assets/icon/adaptive_background.png
+  adaptive_icon_foreground: assets/icon/adaptive_foreground.png
+  adaptive_icon_monochrome: assets/icon/adaptive_monochrome.png
+
+  # iOS: App Store rejects an icon with transparency. Dark and tinted variants
+  # are picked up on iOS 18+.
+  ios: true
+  remove_alpha_ios: true
+  image_path_ios_dark_transparent: assets/icon/ios_dark.png
+  image_path_ios_tinted_grayscale: assets/icon/ios_tinted.png
+  desaturate_tinted_to_grayscale_ios: true
