@@ -442,6 +442,30 @@ void main() {
     });
   });
 
+  test('the receipt date travels in the row and in edits', () {
+    final original = confirmedSale();
+    final draft = TransactionDraft.fromTransaction(
+      original,
+      fallbackDate: today,
+    ).copyWith(receiptDate: () => '2024-03-15');
+    expect(
+      draft.toRow(uid: 'u1', businessId: 'b1', isNew: false)['receipt_date'],
+      '2024-03-15',
+    );
+    expect(draft.changesFrom(original), {'receiptDate': '2024-03-15'});
+    final stored = LedgerTransaction.fromRow(const {
+      'id': 't9',
+      'type': 'expense',
+      'status': 'draft',
+      'date': '2026-10-27',
+      'receipt_date': '2024-03-15',
+    });
+    expect(stored.receiptDate, '2024-03-15');
+    expect(stored.date, '2026-10-27');
+    // A copy is a new entry, not the same receipt.
+    expect(draft.duplicateAs(id: 'n1', date: today).receiptDate, isNull);
+  });
+
   test('duplicateAs makes a fresh draft and drops a past due date', () {
     final source = TransactionDraft.fromTransaction(
       confirmedSale(dueDate: '2026-10-10'),

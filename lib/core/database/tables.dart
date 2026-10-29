@@ -178,6 +178,7 @@ class Transactions extends Table {
   /// `yyyy-MM-dd`: compares and sorts as text.
   TextColumn get date => text().nullable()();
   TextColumn get dueDate => text().nullable()();
+  TextColumn get receiptDate => text().nullable()();
   TextColumn get lineItems =>
       text().map(const JsonListConverter()).withDefault(const Constant('[]'))();
   IntColumn get totalMinor => integer().withDefault(const Constant(0))();

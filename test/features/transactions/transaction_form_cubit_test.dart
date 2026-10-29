@@ -5,12 +5,17 @@ import 'package:business_ledger/core/ledger/ledger_math.dart';
 import 'package:business_ledger/core/money/currency.dart';
 import 'package:business_ledger/features/business/domain/const/role.dart';
 import 'package:business_ledger/features/business/domain/const/standard_field.dart';
+import 'package:business_ledger/features/parties/domain/const/party_kind.dart';
+import 'package:business_ledger/features/parties/domain/models/party.dart';
+import 'package:business_ledger/features/receipt_scan/domain/models/receipt_scan.dart';
+import 'package:business_ledger/features/transactions/domain/models/line_item.dart';
 import 'package:business_ledger/features/transactions/domain/models/transaction_results.dart';
 import 'package:business_ledger/features/transactions/logic/request_tracker.dart';
 import 'package:business_ledger/features/transactions/logic/transaction_form_cubit/transaction_form_cubit.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../support/stub_business_repositories.dart';
+import '../receipt_scan/receipt_fakes.dart';
 import 'stub_transaction_repository.dart';
 import 'transaction_fixtures.dart';
 
@@ -498,6 +503,186 @@ void main() {
       expect(cubit.state.hasUnsavedChanges, isFalse);
       cubit.setDescription('Cement bags (50)');
       expect(cubit.state.hasUnsavedChanges, isTrue);
+      await cubit.close();
+    });
+  });
+
+  group('receipt scan', () {
+    const receipt = ReceiptScan(
+      totalMinor: 95500,
+      date: '2026-10-24',
+      merchant: 'Reliance Fresh',
+      reference: 'RF-4821',
+      paymentMethod: 'UPI',
+      categoryId: 'c-rent',
+      description: 'Groceries',
+      reader: ReceiptReader.ai,
+    );
+
+    test('fills every field it can and adds the shop as a supplier', () async {
+      final cubit = await start();
+      final today = cubit.state.draft!.date;
+      final result = await cubit.applyReceipt(receipt);
+      final draft = cubit.state.draft!;
+      expect(result.filled, 7);
+      expect(result.addedSupplier, 'Reliance Fresh');
+      expect(parties.created.single.kind, PartyKind.supplier);
+      expect(draft.totalMinor, 95500);
+      // The entry keeps today; the receipt's date goes beside it.
+      expect(draft.date, today);
+      expect(draft.receiptDate, '2026-10-24');
+      expect(draft.categoryId, 'c-rent');
+      expect(draft.partyId, 'p-new');
+      expect(draft.partyName, 'Reliance Fresh');
+      expect(draft.description, 'Groceries');
+      expect(draft.reference, 'RF-4821');
+      expect(draft.paymentMethod, 'UPI');
+      expect(cubit.state.receiptFilled, {
+        'totalMinor',
+        'receiptDate',
+        'categoryId',
+        'partyId',
+        'description',
+        'reference',
+        'paymentMethod',
+      });
+      expect(cubit.state.formRevision, 1);
+      expect(cubit.state.hasUnsavedChanges, isTrue);
+      await cubit.close();
+    });
+
+    test('a scan is always itemised: one line when no item was read', () async {
+      final cubit = await start();
+      await cubit.applyReceipt(receipt);
+      final draft = cubit.state.draft!;
+      expect(draft.useLineItems, isTrue);
+      expect(draft.lineItems, [
+        LineItem.of(description: 'Groceries', rateMinor: 95500),
+      ]);
+      expect(draft.total, 95500);
+      expect(cubit.state.lineKeys, hasLength(1));
+      await cubit.close();
+    });
+
+    test('a known supplier is picked instead of adding one', () async {
+      final cubit = await start();
+      parties.parties.add(
+        const Success([
+          Party(
+            id: 'p-rf',
+            name: 'Reliance Fresh Ltd',
+            kind: PartyKind.supplier,
+          ),
+        ]),
+      );
+      await flush();
+      final result = await cubit.applyReceipt(receipt);
+      expect(result.addedSupplier, isNull);
+      expect(parties.created, isEmpty);
+      expect(cubit.state.draft!.partyId, 'p-rf');
+      await cubit.close();
+    });
+
+    test('a refused supplier leaves the shop in the description', () async {
+      parties.createResult = const Failure(scanFailure);
+      final cubit = await start();
+      final result = await cubit.applyReceipt(receipt);
+      expect(result.addedSupplier, isNull);
+      expect(cubit.state.draft!.partyId, isNull);
+      expect(cubit.state.draft!.description, 'Groceries · Reliance Fresh');
+      await cubit.close();
+    });
+
+    test('money coming in never adds the shop as a supplier', () async {
+      final cubit = await start(type: TransactionType.sale);
+      await cubit.applyReceipt(receipt);
+      expect(parties.created, isEmpty);
+      expect(cubit.state.draft!.partyId, isNull);
+      await cubit.close();
+    });
+
+    test('the seller details go into the notes, with the supplier', () async {
+      final cubit = await start();
+      await cubit.applyReceipt(
+        const ReceiptScan(
+          totalMinor: 310000,
+          merchant: 'Calicut Tyres',
+          sellerGstin: '32AAHFC5361P1Z7',
+          sellerPhone: '8606206660',
+          sellerEmail: 'mail@calicuttyres.com',
+        ),
+      );
+      expect(
+        cubit.state.draft!.notes,
+        'Calicut Tyres · GSTIN 32AAHFC5361P1Z7 · Ph 8606206660 · '
+        'mail@calicuttyres.com',
+      );
+      final supplier = parties.created.single;
+      expect(supplier.phone, '8606206660');
+      expect(supplier.email, 'mail@calicuttyres.com');
+      expect(cubit.state.receiptFilled, contains('notes'));
+      await cubit.close();
+    });
+
+    test('never overwrites typed text, and skips a category that does '
+        'not fit the direction', () async {
+      final cubit = await start()
+        ..setDescription('Monthly stock')
+        ..setReference('MY-REF');
+      await cubit.applyReceipt(
+        const ReceiptScan(
+          totalMinor: 100,
+          reference: 'RF-1',
+          description: 'Groceries',
+          categoryId: 'c-sales',
+        ),
+      );
+      final draft = cubit.state.draft!;
+      expect(draft.description, 'Monthly stock');
+      expect(draft.reference, 'MY-REF');
+      expect(draft.categoryId, isNull);
+      expect(draft.totalMinor, 100);
+      await cubit.close();
+    });
+
+    test('a tyre invoice fills as two items, Itemise on, names as the '
+        'description', () async {
+      final cubit = await start();
+      await cubit.applyReceipt(
+        ReceiptScan(
+          totalMinor: 310000,
+          date: '2024-03-15',
+          reference: '3335',
+          lineItems: [
+            LineItem.of(
+              description: '350/19 Michelin Sirac Street RTT',
+              rateMinor: 275000,
+            ),
+            LineItem.of(description: '3.50/19 Michelin Tube', rateMinor: 35000),
+          ],
+        ),
+      );
+      final draft = cubit.state.draft!;
+      expect(draft.useLineItems, isTrue);
+      expect(draft.lineItems.map((l) => l.description), [
+        '350/19 Michelin Sirac Street RTT',
+        '3.50/19 Michelin Tube',
+      ]);
+      expect(draft.total, 310000);
+      expect(draft.receiptDate, '2024-03-15');
+      expect(draft.reference, '3335');
+      expect(
+        draft.description,
+        '350/19 Michelin Sirac Street RTT, 3.50/19 Michelin Tube',
+      );
+      expect(cubit.state.lineKeys, hasLength(2));
+      await cubit.close();
+    });
+
+    test('an empty scan changes nothing', () async {
+      final cubit = await start();
+      expect((await cubit.applyReceipt(const ReceiptScan())).filled, 0);
+      expect(cubit.state.formRevision, 0);
       await cubit.close();
     });
   });

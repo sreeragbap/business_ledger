@@ -102,6 +102,16 @@ import 'package:business_ledger/features/projects/domain/services/project_servic
     as _i896;
 import 'package:business_ledger/features/projects/logic/projects_cubit/projects_cubit.dart'
     as _i227;
+import 'package:business_ledger/features/receipt_scan/domain/repository/receipt_ai_repository.dart'
+    as _i616;
+import 'package:business_ledger/features/receipt_scan/domain/repository/receipt_scanner_repository.dart'
+    as _i690;
+import 'package:business_ledger/features/receipt_scan/domain/services/receipt_ai_service.dart'
+    as _i459;
+import 'package:business_ledger/features/receipt_scan/domain/services/receipt_scanner_service.dart'
+    as _i762;
+import 'package:business_ledger/features/receipt_scan/logic/receipt_scan_cubit/receipt_scan_cubit.dart'
+    as _i262;
 import 'package:business_ledger/features/reports/domain/repository/reports_repository.dart'
     as _i799;
 import 'package:business_ledger/features/reports/domain/services/reports_service.dart'
@@ -166,6 +176,9 @@ extension GetItInjectableX on _i174.GetIt {
     gh.lazySingleton<_i201.DocumentRenderer>(
       () => _i753.PdfDocumentRenderer(gh<_i753.DocumentFontsLoader>()),
     );
+    gh.lazySingleton<_i690.ReceiptScannerRepository>(
+      () => _i762.ReceiptScannerService(),
+    );
     gh.lazySingleton<_i308.Outbox>(
       () => _i308.Outbox(gh<_i661.OutboxStore>()),
       dispose: (i) => i.dispose(),
@@ -178,6 +191,9 @@ extension GetItInjectableX on _i174.GetIt {
         gh<_i152.LocalAuthentication>(),
         gh<_i460.SharedPreferences>(),
       ),
+    );
+    gh.lazySingleton<_i616.ReceiptAiRepository>(
+      () => _i459.ReceiptAiService(gh<_i454.SupabaseClient>()),
     );
     gh.lazySingleton<_i350.DocumentOutput>(
       () => const _i751.PrintingDocumentOutput(),
@@ -244,6 +260,13 @@ extension GetItInjectableX on _i174.GetIt {
     gh.lazySingleton<_i986.RpcClient>(
       () =>
           _i986.RpcClient(gh<_i296.RemoteRpc>(), gh<_i272.CloudAvailability>()),
+    );
+    gh.factory<_i262.ReceiptScanCubit>(
+      () => _i262.ReceiptScanCubit(
+        gh<_i690.ReceiptScannerRepository>(),
+        gh<_i616.ReceiptAiRepository>(),
+        gh<_i272.CloudAvailability>(),
+      ),
     );
     gh.lazySingleton<_i837.AuthCubit>(
       () => _i837.AuthCubit(gh<_i1042.AuthRepository>()),

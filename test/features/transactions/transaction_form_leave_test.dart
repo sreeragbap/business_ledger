@@ -4,6 +4,7 @@ import 'package:business_ledger/core/money/currency.dart';
 import 'package:business_ledger/core/widgets/app_text_field.dart';
 import 'package:business_ledger/features/business/domain/const/role.dart';
 import 'package:business_ledger/features/business/domain/const/standard_field.dart';
+import 'package:business_ledger/features/receipt_scan/logic/receipt_scan_cubit/receipt_scan_cubit.dart';
 import 'package:business_ledger/features/transactions/logic/transaction_form_cubit/transaction_form_cubit.dart';
 import 'package:business_ledger/features/transactions/widgets/transaction_form_view.dart';
 import 'package:flutter/material.dart';
@@ -12,6 +13,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import '../../support/screen.dart';
 import '../../support/stub_business_repositories.dart';
+import '../receipt_scan/receipt_fakes.dart';
 import 'stub_transaction_repository.dart';
 import 'transaction_fixtures.dart';
 
@@ -68,8 +70,17 @@ void main() {
         builder: (context) => TextButton(
           onPressed: () => Navigator.of(context).push(
             MaterialPageRoute<void>(
-              builder: (_) => BlocProvider.value(
-                value: cubit,
+              builder: (_) => MultiBlocProvider(
+                providers: [
+                  BlocProvider.value(value: cubit),
+                  BlocProvider(
+                    create: (_) => ReceiptScanCubit(
+                      FakeReceiptScanner(),
+                      FakeReceiptAi(),
+                      connectivity.service,
+                    ),
+                  ),
+                ],
                 child: TransactionFormView(onDone: (_, _) {}),
               ),
             ),

@@ -10,6 +10,7 @@ import 'package:business_ledger/features/business/domain/const/standard_field.da
 import 'package:business_ledger/features/business/domain/models/business.dart';
 import 'package:business_ledger/features/business/domain/models/member.dart';
 import 'package:business_ledger/features/business/logic/business_scope_cubit/business_scope_cubit.dart';
+import 'package:business_ledger/features/receipt_scan/logic/receipt_scan_cubit/receipt_scan_cubit.dart';
 import 'package:business_ledger/features/transactions/domain/models/transaction_filter.dart';
 import 'package:business_ledger/features/transactions/logic/settlement_form_cubit/settlement_form_cubit.dart';
 import 'package:business_ledger/features/transactions/logic/transaction_detail_cubit/transaction_detail_cubit.dart';
@@ -26,6 +27,7 @@ import 'package:flutter_test/flutter_test.dart';
 import '../../support/screen.dart';
 import '../../support/stub_auth_repository.dart';
 import '../../support/stub_business_repositories.dart';
+import '../receipt_scan/receipt_fakes.dart';
 import 'stub_transaction_repository.dart';
 import 'transaction_fixtures.dart';
 
@@ -411,8 +413,17 @@ void main() {
       );
     }
     await tester.pumpApp(
-      BlocProvider.value(
-        value: cubit,
+      MultiBlocProvider(
+        providers: [
+          BlocProvider.value(value: cubit),
+          BlocProvider(
+            create: (_) => ReceiptScanCubit(
+              FakeReceiptScanner(),
+              FakeReceiptAi(),
+              connectivity.service,
+            ),
+          ),
+        ],
         child: TransactionFormView(onDone: (_, _) {}),
       ),
     );

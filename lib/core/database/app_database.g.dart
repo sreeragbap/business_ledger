@@ -5126,6 +5126,17 @@ class $TransactionsTable extends Transactions
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _receiptDateMeta = const VerificationMeta(
+    'receiptDate',
+  );
+  @override
+  late final GeneratedColumn<String> receiptDate = GeneratedColumn<String>(
+    'receipt_date',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   @override
   late final GeneratedColumnWithTypeConverter<List<dynamic>, String> lineItems =
       GeneratedColumn<String>(
@@ -5455,6 +5466,7 @@ class $TransactionsTable extends Transactions
     paymentMethod,
     date,
     dueDate,
+    receiptDate,
     lineItems,
     totalMinor,
     paidMinor,
@@ -5608,6 +5620,15 @@ class $TransactionsTable extends Transactions
       context.handle(
         _dueDateMeta,
         dueDate.isAcceptableOrUnknown(data['due_date']!, _dueDateMeta),
+      );
+    }
+    if (data.containsKey('receipt_date')) {
+      context.handle(
+        _receiptDateMeta,
+        receiptDate.isAcceptableOrUnknown(
+          data['receipt_date']!,
+          _receiptDateMeta,
+        ),
       );
     }
     if (data.containsKey('total_minor')) {
@@ -5870,6 +5891,10 @@ class $TransactionsTable extends Transactions
         DriftSqlType.string,
         data['${effectivePrefix}due_date'],
       ),
+      receiptDate: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}receipt_date'],
+      ),
       lineItems: $TransactionsTable.$converterlineItems.fromSql(
         attachedDatabase.typeMapping.read(
           DriftSqlType.string,
@@ -6021,6 +6046,7 @@ class TransactionRowData extends DataClass
   /// `yyyy-MM-dd`: compares and sorts as text.
   final String? date;
   final String? dueDate;
+  final String? receiptDate;
   final List<dynamic> lineItems;
   final int totalMinor;
   final int paidMinor;
@@ -6068,6 +6094,7 @@ class TransactionRowData extends DataClass
     required this.paymentMethod,
     this.date,
     this.dueDate,
+    this.receiptDate,
     required this.lineItems,
     required this.totalMinor,
     required this.paidMinor,
@@ -6133,6 +6160,9 @@ class TransactionRowData extends DataClass
     }
     if (!nullToAbsent || dueDate != null) {
       map['due_date'] = Variable<String>(dueDate);
+    }
+    if (!nullToAbsent || receiptDate != null) {
+      map['receipt_date'] = Variable<String>(receiptDate);
     }
     {
       map['line_items'] = Variable<String>(
@@ -6237,6 +6267,9 @@ class TransactionRowData extends DataClass
       dueDate: dueDate == null && nullToAbsent
           ? const Value.absent()
           : Value(dueDate),
+      receiptDate: receiptDate == null && nullToAbsent
+          ? const Value.absent()
+          : Value(receiptDate),
       lineItems: Value(lineItems),
       totalMinor: Value(totalMinor),
       paidMinor: Value(paidMinor),
@@ -6316,6 +6349,7 @@ class TransactionRowData extends DataClass
       paymentMethod: serializer.fromJson<String>(json['payment_method']),
       date: serializer.fromJson<String?>(json['date']),
       dueDate: serializer.fromJson<String?>(json['due_date']),
+      receiptDate: serializer.fromJson<String?>(json['receipt_date']),
       lineItems: $TransactionsTable.$converterlineItems.fromJson(
         serializer.fromJson<Object?>(json['line_items']),
       ),
@@ -6374,6 +6408,7 @@ class TransactionRowData extends DataClass
       'payment_method': serializer.toJson<String>(paymentMethod),
       'date': serializer.toJson<String?>(date),
       'due_date': serializer.toJson<String?>(dueDate),
+      'receipt_date': serializer.toJson<String?>(receiptDate),
       'line_items': serializer.toJson<Object?>(
         $TransactionsTable.$converterlineItems.toJson(lineItems),
       ),
@@ -6428,6 +6463,7 @@ class TransactionRowData extends DataClass
     String? paymentMethod,
     Value<String?> date = const Value.absent(),
     Value<String?> dueDate = const Value.absent(),
+    Value<String?> receiptDate = const Value.absent(),
     List<dynamic>? lineItems,
     int? totalMinor,
     int? paidMinor,
@@ -6473,6 +6509,7 @@ class TransactionRowData extends DataClass
     paymentMethod: paymentMethod ?? this.paymentMethod,
     date: date.present ? date.value : this.date,
     dueDate: dueDate.present ? dueDate.value : this.dueDate,
+    receiptDate: receiptDate.present ? receiptDate.value : this.receiptDate,
     lineItems: lineItems ?? this.lineItems,
     totalMinor: totalMinor ?? this.totalMinor,
     paidMinor: paidMinor ?? this.paidMinor,
@@ -6536,6 +6573,9 @@ class TransactionRowData extends DataClass
           : this.paymentMethod,
       date: data.date.present ? data.date.value : this.date,
       dueDate: data.dueDate.present ? data.dueDate.value : this.dueDate,
+      receiptDate: data.receiptDate.present
+          ? data.receiptDate.value
+          : this.receiptDate,
       lineItems: data.lineItems.present ? data.lineItems.value : this.lineItems,
       totalMinor: data.totalMinor.present
           ? data.totalMinor.value
@@ -6618,6 +6658,7 @@ class TransactionRowData extends DataClass
           ..write('paymentMethod: $paymentMethod, ')
           ..write('date: $date, ')
           ..write('dueDate: $dueDate, ')
+          ..write('receiptDate: $receiptDate, ')
           ..write('lineItems: $lineItems, ')
           ..write('totalMinor: $totalMinor, ')
           ..write('paidMinor: $paidMinor, ')
@@ -6668,6 +6709,7 @@ class TransactionRowData extends DataClass
     paymentMethod,
     date,
     dueDate,
+    receiptDate,
     lineItems,
     totalMinor,
     paidMinor,
@@ -6717,6 +6759,7 @@ class TransactionRowData extends DataClass
           other.paymentMethod == this.paymentMethod &&
           other.date == this.date &&
           other.dueDate == this.dueDate &&
+          other.receiptDate == this.receiptDate &&
           other.lineItems == this.lineItems &&
           other.totalMinor == this.totalMinor &&
           other.paidMinor == this.paidMinor &&
@@ -6764,6 +6807,7 @@ class TransactionsCompanion extends UpdateCompanion<TransactionRowData> {
   final Value<String> paymentMethod;
   final Value<String?> date;
   final Value<String?> dueDate;
+  final Value<String?> receiptDate;
   final Value<List<dynamic>> lineItems;
   final Value<int> totalMinor;
   final Value<int> paidMinor;
@@ -6810,6 +6854,7 @@ class TransactionsCompanion extends UpdateCompanion<TransactionRowData> {
     this.paymentMethod = const Value.absent(),
     this.date = const Value.absent(),
     this.dueDate = const Value.absent(),
+    this.receiptDate = const Value.absent(),
     this.lineItems = const Value.absent(),
     this.totalMinor = const Value.absent(),
     this.paidMinor = const Value.absent(),
@@ -6857,6 +6902,7 @@ class TransactionsCompanion extends UpdateCompanion<TransactionRowData> {
     this.paymentMethod = const Value.absent(),
     this.date = const Value.absent(),
     this.dueDate = const Value.absent(),
+    this.receiptDate = const Value.absent(),
     this.lineItems = const Value.absent(),
     this.totalMinor = const Value.absent(),
     this.paidMinor = const Value.absent(),
@@ -6905,6 +6951,7 @@ class TransactionsCompanion extends UpdateCompanion<TransactionRowData> {
     Expression<String>? paymentMethod,
     Expression<String>? date,
     Expression<String>? dueDate,
+    Expression<String>? receiptDate,
     Expression<String>? lineItems,
     Expression<int>? totalMinor,
     Expression<int>? paidMinor,
@@ -6952,6 +6999,7 @@ class TransactionsCompanion extends UpdateCompanion<TransactionRowData> {
       if (paymentMethod != null) 'payment_method': paymentMethod,
       if (date != null) 'date': date,
       if (dueDate != null) 'due_date': dueDate,
+      if (receiptDate != null) 'receipt_date': receiptDate,
       if (lineItems != null) 'line_items': lineItems,
       if (totalMinor != null) 'total_minor': totalMinor,
       if (paidMinor != null) 'paid_minor': paidMinor,
@@ -7002,6 +7050,7 @@ class TransactionsCompanion extends UpdateCompanion<TransactionRowData> {
     Value<String>? paymentMethod,
     Value<String?>? date,
     Value<String?>? dueDate,
+    Value<String?>? receiptDate,
     Value<List<dynamic>>? lineItems,
     Value<int>? totalMinor,
     Value<int>? paidMinor,
@@ -7049,6 +7098,7 @@ class TransactionsCompanion extends UpdateCompanion<TransactionRowData> {
       paymentMethod: paymentMethod ?? this.paymentMethod,
       date: date ?? this.date,
       dueDate: dueDate ?? this.dueDate,
+      receiptDate: receiptDate ?? this.receiptDate,
       lineItems: lineItems ?? this.lineItems,
       totalMinor: totalMinor ?? this.totalMinor,
       paidMinor: paidMinor ?? this.paidMinor,
@@ -7133,6 +7183,9 @@ class TransactionsCompanion extends UpdateCompanion<TransactionRowData> {
     }
     if (dueDate.present) {
       map['due_date'] = Variable<String>(dueDate.value);
+    }
+    if (receiptDate.present) {
+      map['receipt_date'] = Variable<String>(receiptDate.value);
     }
     if (lineItems.present) {
       map['line_items'] = Variable<String>(
@@ -7249,6 +7302,7 @@ class TransactionsCompanion extends UpdateCompanion<TransactionRowData> {
           ..write('paymentMethod: $paymentMethod, ')
           ..write('date: $date, ')
           ..write('dueDate: $dueDate, ')
+          ..write('receiptDate: $receiptDate, ')
           ..write('lineItems: $lineItems, ')
           ..write('totalMinor: $totalMinor, ')
           ..write('paidMinor: $paidMinor, ')
@@ -13213,6 +13267,7 @@ typedef $$TransactionsTableCreateCompanionBuilder =
       Value<String> paymentMethod,
       Value<String?> date,
       Value<String?> dueDate,
+      Value<String?> receiptDate,
       Value<List<dynamic>> lineItems,
       Value<int> totalMinor,
       Value<int> paidMinor,
@@ -13261,6 +13316,7 @@ typedef $$TransactionsTableUpdateCompanionBuilder =
       Value<String> paymentMethod,
       Value<String?> date,
       Value<String?> dueDate,
+      Value<String?> receiptDate,
       Value<List<dynamic>> lineItems,
       Value<int> totalMinor,
       Value<int> paidMinor,
@@ -13382,6 +13438,11 @@ class $$TransactionsTableFilterComposer
 
   ColumnFilters<String> get dueDate => $composableBuilder(
     column: $table.dueDate,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get receiptDate => $composableBuilder(
+    column: $table.receiptDate,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -13622,6 +13683,11 @@ class $$TransactionsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get receiptDate => $composableBuilder(
+    column: $table.receiptDate,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get lineItems => $composableBuilder(
     column: $table.lineItems,
     builder: (column) => ColumnOrderings(column),
@@ -13830,6 +13896,11 @@ class $$TransactionsTableAnnotationComposer
   GeneratedColumn<String> get dueDate =>
       $composableBuilder(column: $table.dueDate, builder: (column) => column);
 
+  GeneratedColumn<String> get receiptDate => $composableBuilder(
+    column: $table.receiptDate,
+    builder: (column) => column,
+  );
+
   GeneratedColumnWithTypeConverter<List<dynamic>, String> get lineItems =>
       $composableBuilder(column: $table.lineItems, builder: (column) => column);
 
@@ -13998,6 +14069,7 @@ class $$TransactionsTableTableManager
                 Value<String> paymentMethod = const Value.absent(),
                 Value<String?> date = const Value.absent(),
                 Value<String?> dueDate = const Value.absent(),
+                Value<String?> receiptDate = const Value.absent(),
                 Value<List<dynamic>> lineItems = const Value.absent(),
                 Value<int> totalMinor = const Value.absent(),
                 Value<int> paidMinor = const Value.absent(),
@@ -14044,6 +14116,7 @@ class $$TransactionsTableTableManager
                 paymentMethod: paymentMethod,
                 date: date,
                 dueDate: dueDate,
+                receiptDate: receiptDate,
                 lineItems: lineItems,
                 totalMinor: totalMinor,
                 paidMinor: paidMinor,
@@ -14092,6 +14165,7 @@ class $$TransactionsTableTableManager
                 Value<String> paymentMethod = const Value.absent(),
                 Value<String?> date = const Value.absent(),
                 Value<String?> dueDate = const Value.absent(),
+                Value<String?> receiptDate = const Value.absent(),
                 Value<List<dynamic>> lineItems = const Value.absent(),
                 Value<int> totalMinor = const Value.absent(),
                 Value<int> paidMinor = const Value.absent(),
@@ -14138,6 +14212,7 @@ class $$TransactionsTableTableManager
                 paymentMethod: paymentMethod,
                 date: date,
                 dueDate: dueDate,
+                receiptDate: receiptDate,
                 lineItems: lineItems,
                 totalMinor: totalMinor,
                 paidMinor: paidMinor,

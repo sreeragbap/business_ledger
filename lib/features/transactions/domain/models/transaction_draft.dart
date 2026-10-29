@@ -37,6 +37,7 @@ class TransactionDraft extends Equatable {
     this.notes = '',
     this.paymentMethod = '',
     this.dueDate,
+    this.receiptDate,
     this.useLineItems = false,
     this.lineItems = const [],
     this.totalMinor,
@@ -76,6 +77,7 @@ class TransactionDraft extends Equatable {
     notes: tx.notes,
     paymentMethod: tx.paymentMethod,
     dueDate: LedgerDates.isValid(tx.dueDate) ? tx.dueDate : null,
+    receiptDate: LedgerDates.isValid(tx.receiptDate) ? tx.receiptDate : null,
     useLineItems: tx.lineItems.isNotEmpty,
     lineItems: tx.lineItems,
     totalMinor: tx.lineItems.isEmpty ? tx.totalMinor : null,
@@ -106,6 +108,10 @@ class TransactionDraft extends Equatable {
   /// `yyyy-MM-dd`.
   final String date;
   final String? dueDate;
+
+  /// The date printed on the receipt or bill (`yyyy-MM-dd`), kept beside
+  /// [date], the day the entry was made. Filled by a receipt scan.
+  final String? receiptDate;
 
   /// Quantity × rate rows instead of a single amount.
   final bool useLineItems;
@@ -169,6 +175,7 @@ class TransactionDraft extends Equatable {
     'paymentMethod': paymentMethod.trim(),
     'date': date,
     'dueDate': dueDate,
+    'receiptDate': receiptDate,
     'lineItems': useLineItems
         ? [for (final line in lineItems) line.toMap()]
         : const <Map<String, Object>>[],
@@ -212,6 +219,7 @@ class TransactionDraft extends Equatable {
     'payment_method': paymentMethod.trim(),
     'date': LedgerDates.isValid(date) ? date : null,
     'due_date': LedgerDates.isValid(dueDate) ? dueDate : null,
+    'receipt_date': LedgerDates.isValid(receiptDate) ? receiptDate : null,
     'line_items': useLineItems
         ? [for (final line in lineItems) line.toMap()]
         : const <Map<String, Object>>[],
@@ -236,6 +244,7 @@ class TransactionDraft extends Equatable {
     put('paymentMethod', paymentMethod.trim(), original.paymentMethod);
     put('date', date, original.date);
     put('dueDate', dueDate, original.dueDate);
+    put('receiptDate', receiptDate, original.receiptDate);
     // The schema has no null category: a payment simply keeps none.
     if (categoryId != null) put('categoryId', categoryId, original.categoryId);
     put('partyId', partyId, original.partyId);
@@ -251,7 +260,8 @@ class TransactionDraft extends Equatable {
 
   /// A copy as a new draft: same type, amounts, party and category, dated
   /// [date]. A due date that would fall
-  /// before the new date is dropped.
+  /// before the new date is dropped, and so is the receipt date (it belongs
+  /// to the original receipt).
   TransactionDraft duplicateAs({required String id, required String date}) =>
       TransactionDraft(
         id: id,
@@ -294,6 +304,7 @@ class TransactionDraft extends Equatable {
     String? paymentMethod,
     String? date,
     String? Function()? dueDate,
+    String? Function()? receiptDate,
     bool? useLineItems,
     List<LineItem>? lineItems,
     int? Function()? totalMinor,
@@ -314,6 +325,7 @@ class TransactionDraft extends Equatable {
     paymentMethod: paymentMethod ?? this.paymentMethod,
     date: date ?? this.date,
     dueDate: dueDate == null ? this.dueDate : dueDate(),
+    receiptDate: receiptDate == null ? this.receiptDate : receiptDate(),
     useLineItems: useLineItems ?? this.useLineItems,
     lineItems: lineItems ?? this.lineItems,
     totalMinor: totalMinor == null ? this.totalMinor : totalMinor(),
@@ -337,6 +349,7 @@ class TransactionDraft extends Equatable {
     paymentMethod,
     date,
     dueDate,
+    receiptDate,
     useLineItems,
     lineItems,
     totalMinor,

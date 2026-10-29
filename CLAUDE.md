@@ -9,6 +9,14 @@ transactions and reports. Flutter app for **Android and iOS only**.
   works fully offline, and a sync engine keeps it in step with Supabase.
 - **Firebase**: only Google/Apple **sign-in**, Crashlytics, and (planned) push
   notifications. Supabase trusts Firebase ID tokens (Third-party Auth).
+- **Receipt scanning**: on-device OCR (iOS VisionKit + Vision, Android ML Kit
+  document scanner + text recognition, platform channel
+  `business_ledger/receipt_scanner`), then Claude reads the text into fields
+  through the Supabase Edge Function `scan-receipt`; offline the on-device
+  `ReceiptParser` (total, date, shop, bill no., items, seller GSTIN/contact)
+  stands in. Only text leaves the phone. A new shop becomes a supplier;
+  the receipt's date goes to `receipt_date` (shown under "When" only when
+  scanned), never to the transaction date.
 
 This file is the starting context for every session. Deeper detail:
 
@@ -130,6 +138,7 @@ search tokens. `functions/src/ledger.ts` is legacy until Phase C removes it.
 | Money logic in **Postgres functions** (RPC), one transaction each, row locks, `requests` idempotency | Strongest guarantees for balances; no Firebase Blaze plan needed |
 | **Offline = SQLite (drift) + own sync** (outbox push, pull by `seq`) | Supabase has no offline cache; keeps the Cloud sync switch and pending-sync UX |
 | **Text only — no file storage** (no attachments, no stored PDFs) | User's choice; documents re-drawn from their snapshot (deviation from brief §3/§8) |
+| **Receipt scan: on-device OCR + Claude Haiku 5.5 on the text** (Edge Function `scan-receipt`), fills the form immediately | User asked for AI-supported scanning that fills at once (2026-10); text-only keeps photos on the phone, fast and cheap; offline falls back to `ReceiptParser` |
 | Clients write only drafts and configuration; everything that moves money goes through RPCs | RLS enforces it; a modified app can't fake balances |
 | Not queueable: create business, members, delete category, issue document | Need the server's answer immediately |
 | Flavors are Dart-only: `-t lib/main_dev.dart` / `lib/main_prod.dart` | `lib/main.dart` throws on purpose; prod uses the same backends for now |
@@ -155,12 +164,14 @@ lib/
     app_lock/      biometric lock
     business/      businesses, members, roles, BusinessScopeCubit
     categories/ parties/ projects/   per-business configuration
+    receipt_scan/  scanner channel, OCR → ReceiptParser / AI (scan-receipt)
     transactions/  list, form, detail, settlements, pending-sync display
     reports/ dashboard/   daily stats, receivables/payables, charts
     documents/     invoice/bill/receipt PDFs from snapshots
     sync/          Sync screen, status banner, sign-out guard
 supabase/
   migrations/      schema, RLS, RPCs, ledger rules (apply in order)
+  functions/       Edge Functions (scan-receipt: receipt text → fields, Claude)
   tests/           PGlite + vitest: fixtures, RPC scenarios, RLS
 shared/ledger_cases.json   money-rule fixtures used by Dart and SQL
 functions/ firestore.*     legacy — removed in Phase C
@@ -208,6 +219,9 @@ dart format lib test            # CI rejects unformatted code
 flutter analyze                 # must report no issues
 flutter test
 flutter run -t lib/main_dev.dart        # real Firebase sign-in + Supabase
+./build.sh                      # interactive APK/AAB/IPA builds; prod release
+                                # runs a checklist, obfuscates, offers the
+                                # Crashlytics Dart-symbol upload
 dart run flutter_launcher_icons   # app icons from assets/icon (then revert its
                                   # pbxproj SWIFT_ASSET_SYMBOL_EXTENSIONS change)
 
@@ -216,6 +230,8 @@ cd supabase/tests && npm test
 npx supabase migration list             # local vs remote (read-only)
 npx supabase db push --dry-run          # what would be applied (read-only)
 npx supabase db push                    # user runs this (live change)
+npx supabase functions deploy scan-receipt   # user runs this (live change)
+npx supabase secrets set ANTHROPIC_API_KEY=… # user runs this, once
 ```
 
 Emulator mode (`--dart-define=USE_EMULATOR=true`) now only emulates Firebase
@@ -227,7 +243,8 @@ local Supabase setup exists. VS Code launch configs: Dev, Dev (emulators), Prod.
 ## 8. Project state
 
 **Supabase** `unvpyjnotaukdxgmpytr`: CLI logged in and linked.
-Migrations are written and tested but **not yet applied** — check with
+Migrations up to `20261020090000` are applied;
+`20261027090000_receipt_date.sql` is waiting for `db push` — check with
 `npx supabase migration list`. The user must also enable **Authentication →
 Third-party Auth → Firebase** (project id `busineedger-ab7a1`).
 
@@ -237,13 +254,20 @@ Google sign-in enabled; iOS URL scheme set; this Mac's debug SHA-1/SHA-256 on
 the Android app. Firestore and Storage are **not** used (no database created —
 "Firestore NOT_FOUND" logs come only from old builds). Apple sign-in still
 needs the Firebase provider + Apple Developer capability + Xcode team.
-Release/Play signing will need its own SHA fingerprints.
+Release/Play signing will need its own SHA fingerprints. Android release
+builds sign with `android/key.properties` (not in git: storeFile relative
+to `android/app`, storePassword, keyAlias, keyPassword); without it they use
+the debug key, which Play rejects.
 
 **Gotchas**
 - Re-running `flutterfire configure` brings back its Crashlytics
   "upload symbols" build phase, which breaks debug builds. Re-apply the guard
   in `ios/Runner.xcodeproj/project.pbxproj` (Release only, never fail), copy
-  the dev options over prod, re-indent `firebase.json`.
+  the dev options over prod, re-indent `firebase.json`. It may also put back
+  old Gradle plugin versions in `android/settings.gradle.kts`: Crashlytics
+  below 3.x fails release builds on Gradle 9 (`groovy/util/XmlSlurper` in
+  `uploadCrashlyticsMappingFileRelease`); keep Crashlytics 3.0.8 and
+  google-services 4.5.0 or newer.
 - iOS Google Sign-In crashes natively without a client id + URL scheme;
   `AuthService` refuses with a message instead.
 - "No AppCheckProvider installed" in logs is a harmless warning.
@@ -255,6 +279,11 @@ Release/Play signing will need its own SHA fingerprints.
   (`android/app/src/debug/AndroidManifest.xml`).
 - iOS simulator builds may fail inside a sandbox on the SwiftPM cache; build
   outside it.
+- A receipt that scans wrongly: debug builds keep the last scan's OCR lines
+  (text and boxes, no image) in the cache. Pull them with
+  `adb exec-out run-as com.iocod.business_ledger cat cache/last_scan_ocr.json`,
+  redact the buyer, add them under `test/fixtures/receipts/` and replay them in
+  `receipt_real_receipt_test.dart`.
 
 ---
 

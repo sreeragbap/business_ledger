@@ -43,6 +43,8 @@ class TransactionFormState extends Equatable {
     this.loadStatus = const Status.initial(),
     this.saveStatus = const Status.initial(),
     this.outcome,
+    this.formRevision = 0,
+    this.receiptFilled = const {},
   });
 
   final String? businessId;
@@ -86,6 +88,14 @@ class TransactionFormState extends Equatable {
   final Status loadStatus;
   final Status saveStatus;
   final TransactionFormOutcome? outcome;
+
+  /// Bumped when the draft changes from outside the fields (a scanned
+  /// receipt, its undo): the form rebuilds its fields with the new values.
+  final int formRevision;
+
+  /// Field keys (`totalMinor`, `date`, `partyId`…) the last receipt scan
+  /// filled, for the form to highlight.
+  final Set<String> receiptFilled;
 
   bool isEnabled(StandardField field) => enabledFields.contains(field);
 
@@ -131,6 +141,30 @@ class TransactionFormState extends Equatable {
   ];
 
   int get total => draft?.total ?? 0;
+
+  /// The active party a receipt's shop name refers to: the same name once
+  /// case, spaces and punctuation are ignored, or one name containing the
+  /// other. Suppliers for money out (and when undecided), customers for
+  /// money in.
+  Party? partyMatching(String name) {
+    String normalise(String value) =>
+        value.toLowerCase().replaceAll(RegExp('[^a-z0-9]'), '');
+    final wanted = normalise(name);
+    if (wanted.length < 3) return null;
+    final kind = direction == Direction.inflow
+        ? PartyKind.customer
+        : PartyKind.supplier;
+    for (final party in activeParties) {
+      if (party.archived || !party.kind.matches(kind)) continue;
+      final have = normalise(party.name);
+      if (have == wanted ||
+          (have.length >= 4 &&
+              (wanted.contains(have) || have.contains(wanted)))) {
+        return party;
+      }
+    }
+    return null;
+  }
 
   bool get isBusy => saveStatus.isLoading;
 
@@ -201,6 +235,8 @@ class TransactionFormState extends Equatable {
     Status? loadStatus,
     Status? saveStatus,
     TransactionFormOutcome? Function()? outcome,
+    int? formRevision,
+    Set<String>? receiptFilled,
   }) => TransactionFormState(
     businessId: businessId ?? this.businessId,
     currency: currency ?? this.currency,
@@ -221,6 +257,8 @@ class TransactionFormState extends Equatable {
     loadStatus: loadStatus ?? this.loadStatus,
     saveStatus: saveStatus ?? this.saveStatus,
     outcome: outcome == null ? this.outcome : outcome(),
+    formRevision: formRevision ?? this.formRevision,
+    receiptFilled: receiptFilled ?? this.receiptFilled,
   );
 
   @override
@@ -244,5 +282,7 @@ class TransactionFormState extends Equatable {
     loadStatus,
     saveStatus,
     outcome,
+    formRevision,
+    receiptFilled,
   ];
 }

@@ -6,6 +6,7 @@ import 'package:business_ledger/core/ledger/ledger_enums.dart';
 import 'package:business_ledger/core/router/app_router.dart';
 import 'package:business_ledger/core/widgets/app_snack_bar.dart';
 import 'package:business_ledger/features/business/logic/business_scope_cubit/business_scope_cubit.dart';
+import 'package:business_ledger/features/receipt_scan/logic/receipt_scan_cubit/receipt_scan_cubit.dart';
 import 'package:business_ledger/features/transactions/logic/transaction_form_cubit/transaction_form_cubit.dart';
 import 'package:business_ledger/features/transactions/widgets/success_check.dart';
 import 'package:business_ledger/features/transactions/widgets/transaction_form_view.dart';
@@ -26,25 +27,36 @@ class TransactionFormScreen extends StatelessWidget
   final TransactionType? initialType;
 
   @override
-  Widget wrappedRoute(BuildContext context) => BlocProvider(
-    create: (_) {
-      final cubit = getIt<TransactionFormCubit>();
-      final scope = context.read<BusinessScopeCubit>().state;
-      final business = scope.business;
-      if (business != null) {
-        unawaited(
-          cubit.start(
-            businessId: business.id,
-            currency: business.currency,
-            role: scope.role,
-            enabledFields: business.settings.enabledStandardFields,
-            transactionId: transactionId,
-            initialType: initialType,
-          ),
-        );
-      }
-      return cubit;
-    },
+  Widget wrappedRoute(BuildContext context) => MultiBlocProvider(
+    providers: [
+      BlocProvider(
+        create: (_) {
+          final scanner = getIt<ReceiptScanCubit>();
+          unawaited(scanner.init());
+          return scanner;
+        },
+      ),
+      BlocProvider(
+        create: (_) {
+          final cubit = getIt<TransactionFormCubit>();
+          final scope = context.read<BusinessScopeCubit>().state;
+          final business = scope.business;
+          if (business != null) {
+            unawaited(
+              cubit.start(
+                businessId: business.id,
+                currency: business.currency,
+                role: scope.role,
+                enabledFields: business.settings.enabledStandardFields,
+                transactionId: transactionId,
+                initialType: initialType,
+              ),
+            );
+          }
+          return cubit;
+        },
+      ),
+    ],
     child: this,
   );
 

@@ -16,10 +16,12 @@ import 'package:business_ledger/features/categories/domain/models/category.dart'
 import 'package:business_ledger/features/categories/domain/models/custom_field.dart';
 import 'package:business_ledger/features/categories/domain/repository/category_repository.dart';
 import 'package:business_ledger/features/categories/domain/repository/custom_field_repository.dart';
+import 'package:business_ledger/features/parties/domain/const/party_kind.dart';
 import 'package:business_ledger/features/parties/domain/models/party.dart';
 import 'package:business_ledger/features/parties/domain/repository/party_repository.dart';
 import 'package:business_ledger/features/projects/domain/models/project.dart';
 import 'package:business_ledger/features/projects/domain/repository/project_repository.dart';
+import 'package:business_ledger/features/receipt_scan/domain/models/receipt_scan.dart';
 import 'package:business_ledger/features/transactions/domain/models/ledger_dates.dart';
 import 'package:business_ledger/features/transactions/domain/models/ledger_transaction.dart';
 import 'package:business_ledger/features/transactions/domain/models/line_item.dart';
@@ -344,6 +346,9 @@ class TransactionFormCubit extends Cubit<TransactionFormState> {
     _clearError('dueDate');
   }
 
+  void setReceiptDate(String? day) =>
+      _update((draft) => draft.copyWith(receiptDate: () => day));
+
   /// Switches between a single amount and line items, carrying the amount
   /// across: an amount becomes one line of 1 × amount; lines become their
   /// total.
@@ -420,6 +425,174 @@ class TransactionFormCubit extends Cubit<TransactionFormState> {
       ),
     );
     _clearError('customFields.$fieldId');
+  }
+
+  // --- Receipt scan ----------------------------------------------------------
+
+  /// The one line of a scan whose items could not be read.
+  static const String receiptTotalLine = 'Receipt total';
+
+  /// Fills the form from a scanned receipt: how many details it filled
+  /// (0: nothing usable), and the supplier it added, if any.
+  ///
+  /// The amount and the receipt date replace what is there: the receipt is
+  /// the source. A scan is always itemised: the receipt's items (a charges
+  /// line makes them add up), or one line for the total when no item could
+  /// be read. The category is set only when it fits the entry. The shop
+  /// becomes the party: an existing one that matches, or, for money going
+  /// out, a new supplier with the seller's contact details. Text fields are
+  /// filled only while empty, so nothing typed is lost.
+  Future<({int filled, String? addedSupplier})> applyReceipt(
+    ReceiptScan scan,
+  ) async {
+    const nothing = (filled: 0, addedSupplier: null);
+    if (state.draft == null || state.isConfirmedEdit) return nothing;
+
+    // The party first: adding a supplier is the only step that waits.
+    Party? party;
+    String? addedSupplier;
+    final businessId = state.businessId;
+    if (scan.merchant case final name?
+        when state.isEnabled(StandardField.party) &&
+            state.draft!.partyId == null) {
+      party = state.partyMatching(name);
+      if (party == null &&
+          businessId != null &&
+          state.direction != Direction.inflow) {
+        final supplier = Party(
+          id: '',
+          name: name,
+          kind: PartyKind.supplier,
+          phone: scan.sellerPhone ?? '',
+          email: scan.sellerEmail ?? '',
+          address: scan.sellerAddress ?? '',
+        );
+        // Refused (a viewer, say): the shop name goes to the description.
+        if (await _parties.create(businessId, supplier) case Success(
+          data: final id,
+        )) {
+          party = supplier.copyWith(id: id);
+          addedSupplier = name;
+        }
+      }
+    }
+
+    final draft = state.draft;
+    if (draft == null || state.isConfirmedEdit) return nothing;
+    final filled = <String>{};
+    var next = draft;
+    List<int>? lineKeys;
+
+    if (scan.totalMinor case final total?) {
+      // The readers pass only lines that add up to the total exactly.
+      final lines = scan.lineItems.isNotEmpty
+          ? scan.lineItems
+          : [
+              LineItem.of(
+                description: scan.description ?? receiptTotalLine,
+                rateMinor: total,
+              ),
+            ];
+      next = next.copyWith(
+        useLineItems: true,
+        lineItems: lines,
+        totalMinor: () => total,
+      );
+      lineKeys = _keysFor(lines.length);
+      filled.add('totalMinor');
+    }
+    // The entry keeps the day it is made; the receipt's own date goes
+    // beside it.
+    if (scan.date case final date?) {
+      next = next.copyWith(receiptDate: () => date);
+      filled.add('receiptDate');
+    }
+    if (scan.categoryId case final id?) {
+      final category = state.availableCategories
+          .where((c) => c.id == id)
+          .firstOrNull;
+      if (category != null) {
+        next = next.copyWith(
+          categoryId: () => category.id,
+          categoryName: () => category.name,
+        );
+        filled.add('categoryId');
+      }
+    }
+    if (party != null) {
+      next = next.copyWith(
+        partyId: () => party!.id,
+        partyName: () => party!.name,
+      );
+      filled.add('partyId');
+    }
+    if (next.description.trim().isEmpty) {
+      // "Groceries · Reliance Fresh": what was bought (the AI's note, or
+      // the item names), and the shop when no party names it.
+      final bought =
+          scan.description ??
+          (scan.lineItems.isEmpty
+              ? null
+              : scan.lineItems
+                    .where((line) => !ReceiptScan.isCharge(line))
+                    .map((line) => line.description)
+                    .where((name) => name.isNotEmpty)
+                    .join(', '));
+      final text = [
+        if (bought != null && bought.isNotEmpty) bought,
+        if (party == null) ?scan.merchant,
+      ].join(' · ');
+      if (text.isNotEmpty) {
+        next = next.copyWith(
+          description: text.length > TransactionDraft.maxDescriptionLength
+              ? text.substring(0, TransactionDraft.maxDescriptionLength)
+              : text,
+        );
+        filled.add('description');
+      }
+    }
+    if (scan.reference case final reference?
+        when state.isEnabled(StandardField.reference) &&
+            next.reference.trim().isEmpty) {
+      next = next.copyWith(reference: reference);
+      filled.add('reference');
+    }
+    if (scan.paymentMethod case final method?
+        when state.isEnabled(StandardField.paymentMethod) &&
+            next.paymentMethod.trim().isEmpty) {
+      next = next.copyWith(paymentMethod: method);
+      filled.add('paymentMethod');
+    }
+    // The seller's tax number and contact, for the record.
+    if (scan.sellerSummary case final seller?
+        when state.isEnabled(StandardField.notes) &&
+            next.notes.trim().isEmpty) {
+      final note = [?scan.merchant, seller].join(' · ');
+      next = next.copyWith(
+        notes: note.length > TransactionDraft.maxNotesLength
+            ? note.substring(0, TransactionDraft.maxNotesLength)
+            : note,
+      );
+      filled.add('notes');
+    }
+    if (filled.isEmpty) return (filled: 0, addedSupplier: addedSupplier);
+
+    emit(
+      state.copyWith(
+        draft: _fitCategory(next),
+        lineKeys: lineKeys,
+        formRevision: state.formRevision + 1,
+        receiptFilled: filled,
+        errors: {
+          for (final entry in state.errors.entries)
+            if (!filled.contains(entry.key) && entry.key != 'lineItems')
+              entry.key: entry.value,
+        },
+        saveStatus: state.saveStatus.isFailure ? const Status.initial() : null,
+        outcome: () => null,
+      ),
+    );
+    return (filled: filled.length, addedSupplier: addedSupplier);
   }
 
   // --- Validation ------------------------------------------------------------

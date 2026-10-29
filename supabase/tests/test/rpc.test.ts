@@ -355,6 +355,24 @@ describe("edit and cancel", () => {
     expect(num((await stats(db, biz.businessId, "2026-10-01"))!.income_minor)).toBe(1502);
   });
 
+  it("keeps the receipt date beside the entry's date, through confirm and edit", async () => {
+    const dates = async (id: string) => (await db.query<{date: string; receipt: string | null}>(
+      "select date::text as date, receipt_date::text as receipt from public.transactions where id = $1", [id])).rows[0];
+    const id = await sale({receipt_date: "2024-03-15"});
+    const {version} = await confirm(id);
+    expect(await dates(id)).toEqual({date: "2026-10-01", receipt: "2024-03-15"});
+    await expectFailure(edit(id, version, {receiptDate: "2024-02-30"}), "invalid-argument",
+      {field: "changes.receiptDate"});
+    await edit(id, version, {receiptDate: "2024-03-16"});
+    expect(await dates(id)).toEqual({date: "2026-10-01", receipt: "2024-03-16"});
+    const audit = await owner.query(
+      "select before, after from public.audit_log where entity_id = $1 and action = 'edit'", [id]);
+    expect(audit[0].before).toMatchObject({receiptDate: "2024-03-15"});
+    expect(audit[0].after).toMatchObject({receiptDate: "2024-03-16"});
+    await edit(id, version + 1, {receiptDate: null});
+    expect((await dates(id)).receipt).toBeNull();
+  });
+
   it("cancel needs refunds first, keeps the record and voids documents", async () => {
     const id = await sale();
     await confirm(id);

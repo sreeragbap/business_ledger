@@ -24,6 +24,8 @@
 	<string>????</string>
 	<key>CFBundleVersion</key>
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Business Ledger uses the camera to scan receipts and fill in transactions. Photos are read on your phone and not stored.</string>
 	<key>NSFaceIDUsageDescription</key>
 	<string>Business Ledger uses Face ID to unlock the app when app lock is on.</string>
 	<key>UIUserInterfaceStyle</key>

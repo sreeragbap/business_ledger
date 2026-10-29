@@ -42,7 +42,15 @@ class AppDatabase extends _$AppDatabase {
   );
 
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 2;
+
+  @override
+  MigrationStrategy get migration => MigrationStrategy(
+    onUpgrade: (m, from, to) async {
+      // 2: transactions.receipt_date.
+      if (from < 2) await m.addColumn(transactions, transactions.receiptDate);
+    },
+  );
 
   /// Every synced table, for wiping a business or the whole store.
   List<TableInfo<Table, Object?>> get syncedTables => [

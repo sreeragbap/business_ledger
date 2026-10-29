@@ -101,7 +101,7 @@ settlement `balance_after`, audit `before`/`after`, and RPC results.
 | `custom_fields` | `id` uuid (client) | label, type, options[], required, sort_order, archived |
 | `parties` | `id` uuid (client) | name, kind, phone, email, address, sort_order, archived |
 | `projects` | `id` uuid (client) | name, code, description (≤ 500, added by `20261020090000_project_description.sql`), sort_order, archived |
-| `transactions` | `id` uuid (client) | ARCHITECTURE §4: type, direction, status, category/party/project id + name snapshot, description, reference, notes, payment_method, date, due_date, line_items, total/paid/refunded/credited/effective/outstanding `_minor`, payment_status, is_open, custom_fields, linked_transaction_id, link_kind, settlement_id, search_tokens text[], version, created_by, confirmed_*, cancelled_*, cancel_reason, updated_by, deleted_at (drafts) |
+| `transactions` | `id` uuid (client) | ARCHITECTURE §4: type, direction, status, category/party/project id + name snapshot, description, reference, notes, payment_method, date, due_date, receipt_date (printed on the scanned receipt; the entry keeps its own `date`), line_items, total/paid/refunded/credited/effective/outstanding `_minor`, payment_status, is_open, custom_fields, linked_transaction_id, link_kind, settlement_id, search_tokens text[], version, created_by, confirmed_*, cancelled_*, cancel_reason, updated_by, deleted_at (drafts) |
 | `settlements` | (transaction_id, id) | id = request id; kind, amount_minor, date, method, note, balance_after, linked_transaction_id, voided |
 | `documents` | (business_id, id) | id = `<type>-<transactionId>-<settlementId or main>`; number unique per business+type; snapshot; voided |
 | `audit_log` | identity | entity, entity_id, action, actor, before, after, note, at |
@@ -151,7 +151,7 @@ returns the stored result; the same id for another action → `already-exists`.
 | `update_member_role` (updateMemberRole) | p_business_id, p_uid, p_role (`owner` = transfer) | {uid, role} | admin |
 | `remove_member` (removeMember) | p_business_id, p_uid (self = leave) | {uid} | admin / self |
 | `confirm_transaction` (confirmTransaction) | p_business_id, p_transaction_id, p_request_id, p_expected_version?, p_settle_now?, p_settle_date?, p_settle_method? | {transactionId, version, paymentStatus, settlementId} | admin |
-| `edit_confirmed_transaction` (editConfirmedTransaction) | p_business_id, p_transaction_id, p_request_id, p_expected_version, p_changes {description, reference, notes, paymentMethod, date, dueDate, categoryId, partyId, projectId, lineItems, totalMinor, customFields} | {transactionId, version, paymentStatus} | admin |
+| `edit_confirmed_transaction` (editConfirmedTransaction) | p_business_id, p_transaction_id, p_request_id, p_expected_version, p_changes {description, reference, notes, paymentMethod, date, dueDate, receiptDate, categoryId, partyId, projectId, lineItems, totalMinor, customFields} | {transactionId, version, paymentStatus} | admin |
 | `cancel_transaction` (cancelTransaction) | p_business_id, p_transaction_id, p_request_id, p_expected_version?, p_reason? | {transactionId, version, voidedDocuments} | admin |
 | `record_settlement` (recordSettlement) | p_business_id, p_transaction_id, p_request_id, p_kind (`payment`/`refund`/`credit`), p_amount_minor, p_date, p_method?, p_note?, p_expected_version? | {settlementId, transactionId, linkedTransactionId, version, paymentStatus, outstandingMinor} | admin |
 | `delete_category` (deleteCategory) | p_business_id, p_category_id | {categoryId} | editor |
@@ -239,6 +239,41 @@ outbox exactly as today.
   deadlock; Postgres aborts one side with `40P01` (retry).
 * Writes to one business are serialised by the sync lock (short: one
   statement or one RPC). Different businesses never wait on each other.
+
+## Edge Function: `scan-receipt` (receipt scanning with AI)
+
+`functions/scan-receipt/` turns a receipt's text into ledger fields with
+Claude (`claude-haiku-5-5`, structured JSON output). The phone does the OCR
+itself (Apple Vision / Google ML Kit) and sends **only the text**; no image
+reaches the server and nothing is stored. Offline, or when this function
+fails, the app falls back to its on-device parser.
+
+* **Auth**: `verify_jwt = false` in `config.toml`, because the gateway does
+  not know Firebase tokens. The function verifies the caller's Firebase ID
+  token itself against Google's public keys (issuer/audience
+  `busineedger-ab7a1`) and answers `401` otherwise.
+* **Request** (`POST`, JSON): `text` (≤ 12,000 chars), `currency` (ISO),
+  `today` (`yyyy-MM-dd`), `categories: [{id, name}]` (the ones the entry may
+  use, ≤ 300).
+* **Response** `200`: `merchant`, `date`, `total` (decimal string),
+  `currency`, `reference`, `paymentMethod` (one of the app's five),
+  `categoryId` (only an id from the request), `description`,
+  `lineItems: [{description, quantity, rate}]`, `sellerGstin`,
+  `sellerPhone`, `sellerEmail`, `sellerAddress`; every field may be null. The
+  app turns amounts into minor units with its own `Money` rules, drops a
+  total in a foreign currency, and keeps line items only when they add up
+  to the total exactly.
+* **Errors**: `400 invalid-argument`, `401 unauthenticated`,
+  `422 unreadable` (refusal / malformed answer), `503 busy` (rate limit),
+  `504 timeout`, `502 upstream`.
+* Pure helpers (`receipt.ts`) are tested in `tests/test/scan_receipt.test.ts`.
+
+**Deploy (live change: the user runs these):**
+
+```bash
+npx supabase secrets set ANTHROPIC_API_KEY=sk-ant-...   # once
+npx supabase functions deploy scan-receipt
+```
 
 ## Differences from the Firestore version
 

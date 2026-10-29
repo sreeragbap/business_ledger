@@ -20,6 +20,9 @@ import 'package:business_ledger/core/widgets/app_text_field.dart';
 import 'package:business_ledger/features/business/domain/const/standard_field.dart';
 import 'package:business_ledger/features/parties/domain/const/party_kind.dart';
 import 'package:business_ledger/features/parties/widgets/party_form_sheet.dart';
+import 'package:business_ledger/features/receipt_scan/widgets/receipt_fill_highlight.dart';
+import 'package:business_ledger/features/receipt_scan/widgets/receipt_scan_button.dart';
+import 'package:business_ledger/features/receipt_scan/widgets/receipt_scan_scope.dart';
 import 'package:business_ledger/features/transactions/domain/const/transaction_filters.dart';
 import 'package:business_ledger/features/transactions/domain/models/transaction_draft.dart';
 import 'package:business_ledger/features/transactions/logic/transaction_form_cubit/transaction_form_cubit.dart';
@@ -91,16 +94,30 @@ class TransactionFormView extends StatelessWidget {
                     TransactionFormMode.editDraft => 'Edit draft',
                     TransactionFormMode.editConfirmed => 'Edit transaction',
                   };
-                  return Scaffold(
-                    appBar: AppBar(title: Text(title)),
-                    body: state.draft != null
-                        ? const _Form()
-                        : state.loadStatus.isFailure
-                        ? AppErrorState(message: state.loadStatus.message)
-                        : const AppLoader(),
-                    bottomNavigationBar: state.draft == null
-                        ? null
-                        : const _ActionBar(),
+                  // A receipt can fill a new entry or a draft; a confirmed
+                  // one changes field by field.
+                  final canScan = state.draft != null && !state.isConfirmedEdit;
+                  return ReceiptScanScope(
+                    child: Scaffold(
+                      appBar: AppBar(
+                        title: Text(title),
+                        actions: [
+                          if (canScan)
+                            ReceiptScanButton(
+                              onPressed: () =>
+                                  unawaited(startReceiptScan(context)),
+                            ),
+                        ],
+                      ),
+                      body: state.draft != null
+                          ? const _Form()
+                          : state.loadStatus.isFailure
+                          ? AppErrorState(message: state.loadStatus.message)
+                          : const AppLoader(),
+                      bottomNavigationBar: state.draft == null
+                          ? null
+                          : const _ActionBar(),
+                    ),
                   );
                 },
               ),
@@ -131,8 +148,12 @@ class _Form extends StatelessWidget {
             : PartyKind.customer;
 
         return ListView(
-          // Rebuilt from scratch when a reload brings a new version.
-          key: ValueKey('form-${draft.id}-${state.original?.version}'),
+          // Rebuilt from scratch when a reload brings a new version, or a
+          // receipt fills the fields from outside.
+          key: ValueKey(
+            'form-${draft.id}-${state.original?.version}-'
+            '${state.formRevision}',
+          ),
           padding: EdgeInsets.fromLTRB(
             AppSpacing.screenHorizontal.w,
             AppSpacing.sm.h,
@@ -188,20 +209,26 @@ class _Form extends StatelessWidget {
             ],
             sectionGap,
             const AppSectionLabel('Amount'),
-            const _AmountSection(),
+            const ReceiptFillHighlight(
+              field: 'totalMinor',
+              child: _AmountSection(),
+            ),
             sectionGap,
             const AppSectionLabel('When'),
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Expanded(
-                  child: LedgerDateField(
-                    label: 'Date',
-                    value: draft.date,
-                    errorText: errors['date'],
-                    onChanged: (day) {
-                      if (day != null) cubit.setDate(day);
-                    },
+                  child: ReceiptFillHighlight(
+                    field: 'date',
+                    child: LedgerDateField(
+                      label: 'Date',
+                      value: draft.date,
+                      errorText: errors['date'],
+                      onChanged: (day) {
+                        if (day != null) cubit.setDate(day);
+                      },
+                    ),
                   ),
                 ),
                 if (state.showsDueDate) ...[
@@ -220,32 +247,54 @@ class _Form extends StatelessWidget {
                 ],
               ],
             ),
+            // Only once a scan found it: the date printed on the receipt,
+            // beside the day the entry is made.
+            if (draft.receiptDate != null) ...[
+              gap,
+              ReceiptFillHighlight(
+                field: 'receiptDate',
+                child: LedgerDateField(
+                  label: 'Receipt date',
+                  value: draft.receiptDate,
+                  first: '2000-01-01',
+                  clearable: true,
+                  helperText: 'As printed on the scanned receipt',
+                  onChanged: cubit.setReceiptDate,
+                ),
+              ),
+            ],
             sectionGap,
             const AppSectionLabel('Details'),
-            PickerField(
-              label: type == TransactionType.payment
-                  ? 'Category (optional)'
-                  : 'Category',
-              value: category?.name ?? draft.categoryName,
-              hint: direction == null
-                  ? 'Choose money in or out first'
-                  : 'Choose a category',
-              icon: Icons.category_outlined,
-              errorText: errors['categoryId'],
-              onClear: () => cubit.setCategory(null),
-              onTap: () => unawaited(_pickCategory(context, state)),
+            ReceiptFillHighlight(
+              field: 'categoryId',
+              child: PickerField(
+                label: type == TransactionType.payment
+                    ? 'Category (optional)'
+                    : 'Category',
+                value: category?.name ?? draft.categoryName,
+                hint: direction == null
+                    ? 'Choose money in or out first'
+                    : 'Choose a category',
+                icon: Icons.category_outlined,
+                errorText: errors['categoryId'],
+                onClear: () => cubit.setCategory(null),
+                onTap: () => unawaited(_pickCategory(context, state)),
+              ),
             ),
             if (state.isEnabled(StandardField.party)) ...[
               gap,
-              PickerField(
-                label: partyKind == PartyKind.supplier
-                    ? 'Supplier'
-                    : 'Customer',
-                value: draft.partyName,
-                hint: 'Optional',
-                icon: Icons.person_outline_rounded,
-                onClear: () => cubit.setParty(null),
-                onTap: () => unawaited(_pickParty(context, state, partyKind)),
+              ReceiptFillHighlight(
+                field: 'partyId',
+                child: PickerField(
+                  label: partyKind == PartyKind.supplier
+                      ? 'Supplier'
+                      : 'Customer',
+                  value: draft.partyName,
+                  hint: 'Optional',
+                  icon: Icons.person_outline_rounded,
+                  onClear: () => cubit.setParty(null),
+                  onTap: () => unawaited(_pickParty(context, state, partyKind)),
+                ),
               ),
             ],
             if (state.isEnabled(StandardField.project)) ...[
@@ -260,41 +309,53 @@ class _Form extends StatelessWidget {
               ),
             ],
             gap,
-            AppTextField(
-              label: 'Description',
-              hint: 'What was it for?',
-              initialValue: draft.description,
-              maxLength: TransactionDraft.maxDescriptionLength,
-              textCapitalization: TextCapitalization.sentences,
-              errorText: errors['description'],
-              onChanged: cubit.setDescription,
+            ReceiptFillHighlight(
+              field: 'description',
+              child: AppTextField(
+                label: 'Description',
+                hint: 'What was it for?',
+                initialValue: draft.description,
+                maxLength: TransactionDraft.maxDescriptionLength,
+                textCapitalization: TextCapitalization.sentences,
+                errorText: errors['description'],
+                onChanged: cubit.setDescription,
+              ),
             ),
             if (state.isEnabled(StandardField.reference)) ...[
               gap,
-              AppTextField(
-                label: 'Reference',
-                hint: 'Bill no., PO, cheque no.',
-                initialValue: draft.reference,
-                maxLength: TransactionDraft.maxReferenceLength,
-                errorText: errors['reference'],
-                onChanged: cubit.setReference,
+              ReceiptFillHighlight(
+                field: 'reference',
+                child: AppTextField(
+                  label: 'Reference',
+                  hint: 'Bill no., PO, cheque no.',
+                  initialValue: draft.reference,
+                  maxLength: TransactionDraft.maxReferenceLength,
+                  errorText: errors['reference'],
+                  onChanged: cubit.setReference,
+                ),
               ),
             ],
             if (state.isEnabled(StandardField.paymentMethod)) ...[
               gap,
-              _PaymentMethodField(value: draft.paymentMethod),
+              ReceiptFillHighlight(
+                field: 'paymentMethod',
+                child: _PaymentMethodField(value: draft.paymentMethod),
+              ),
             ],
             if (state.isEnabled(StandardField.notes)) ...[
               gap,
-              AppTextField(
-                label: 'Notes',
-                initialValue: draft.notes,
-                maxLines: 4,
-                minLines: 2,
-                maxLength: TransactionDraft.maxNotesLength,
-                textCapitalization: TextCapitalization.sentences,
-                errorText: errors['notes'],
-                onChanged: cubit.setNotes,
+              ReceiptFillHighlight(
+                field: 'notes',
+                child: AppTextField(
+                  label: 'Notes',
+                  initialValue: draft.notes,
+                  maxLines: 4,
+                  minLines: 2,
+                  maxLength: TransactionDraft.maxNotesLength,
+                  textCapitalization: TextCapitalization.sentences,
+                  errorText: errors['notes'],
+                  onChanged: cubit.setNotes,
+                ),
               ),
             ],
             if (state.categoryFields.isNotEmpty) ...[

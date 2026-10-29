@@ -33,6 +33,7 @@ class LedgerTransaction extends Equatable {
     this.paymentMethod = '',
     this.date,
     this.dueDate,
+    this.receiptDate,
     this.lineItems = const [],
     this.totalMinor = 0,
     this.paidMinor = 0,
@@ -94,6 +95,7 @@ class LedgerTransaction extends Equatable {
       paymentMethod: map.readString('paymentMethod'),
       date: map.readOptionalString('date'),
       dueDate: map.readOptionalString('dueDate'),
+      receiptDate: map.readOptionalString('receiptDate'),
       lineItems: lines.isNotEmpty
           ? List.unmodifiable([
               for (final line in lines)
@@ -154,6 +156,10 @@ class LedgerTransaction extends Equatable {
   /// `yyyy-MM-dd`.
   final String? date;
   final String? dueDate;
+
+  /// The date printed on the receipt or bill, beside [date] (the day the
+  /// entry was made).
+  final String? receiptDate;
   final List<LineItem> lineItems;
 
   final int totalMinor;
@@ -256,6 +262,7 @@ class LedgerTransaction extends Equatable {
     paymentMethod,
     date,
     dueDate,
+    receiptDate,
     lineItems,
     totalMinor,
     paidMinor,

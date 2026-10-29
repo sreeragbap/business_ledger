@@ -487,6 +487,12 @@ class _Content extends StatelessWidget {
         value: LedgerDates.format(tx.date).ifEmpty('Not set'),
         icon: Icons.event_outlined,
       ),
+      if (LedgerDates.isValid(tx.receiptDate))
+        DetailLine(
+          label: 'Receipt date',
+          value: LedgerDates.format(tx.receiptDate),
+          icon: Icons.receipt_long_outlined,
+        ),
       if (tx.categoryName != null)
         DetailLine(
           label: 'Category',
