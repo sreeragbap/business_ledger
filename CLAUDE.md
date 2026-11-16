@@ -268,6 +268,11 @@ the debug key, which Play rejects.
   below 3.x fails release builds on Gradle 9 (`groovy/util/XmlSlurper` in
   `uploadCrashlyticsMappingFileRelease`); keep Crashlytics 3.0.8 and
   google-services 4.5.0 or newer.
+- Keep Firebase on firebase_core 4.x / firebase_auth 6.x /
+  firebase_crashlytics 5.x (firebase-ios-sdk 12) until google_sign_in_ios
+  6.4.0+ (GoogleSignIn 10) is usable. That needs Flutter 3.47. With
+  firebase-ios-sdk 13 and GoogleSignIn 9, iOS SwiftPM resolution fails
+  (app-check / gtm-session-fetcher conflict).
 - iOS Google Sign-In crashes natively without a client id + URL scheme;
   `AuthService` refuses with a message instead.
 - "No AppCheckProvider installed" in logs is a harmless warning.
