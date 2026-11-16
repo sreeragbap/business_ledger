@@ -1,11 +1,12 @@
 import 'package:business_ledger/core/theme/app_palette.dart';
 import 'package:business_ledger/core/theme/app_radius.dart';
 import 'package:business_ledger/core/theme/app_spacing.dart';
+import 'package:business_ledger/core/widgets/app_pressable.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 
-/// A bordered surface panel. Tappable when [onTap] is given, with the ripple
-/// clipped to the card's corners.
+/// A glass panel: lit gradient, hairline border. Tappable when [onTap] is
+/// given, with the ripple clipped to the card's corners and a slight press.
 class AppCard extends StatelessWidget {
   const AppCard({
     required this.child,
@@ -27,26 +28,44 @@ class AppCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final radius = AppRadius.card;
-    return Material(
-      color: color ?? context.colors.surface,
-      shape: RoundedRectangleBorder(
+    final colors = context.colors;
+    final card = DecoratedBox(
+      // Glass: a top-left lit gradient (unless a colour is forced), a
+      // hairline of light around the edge and a shadow lifting it off the
+      // page, so content stands clear of the background.
+      decoration: BoxDecoration(
         borderRadius: radius,
-        side: BorderSide(color: borderColor ?? context.colors.border),
+        color: color,
+        gradient: color == null ? colors.cardGradient : null,
+        border: Border.all(color: borderColor ?? colors.cardBorder),
+        boxShadow: [
+          BoxShadow(
+            color: colors.cardShadow,
+            blurRadius: 24,
+            offset: const Offset(0, 10),
+            spreadRadius: -6,
+          ),
+        ],
       ),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: radius,
-        child: Padding(
-          padding:
-              padding ??
-              EdgeInsets.symmetric(
-                horizontal: AppSpacing.lg.w,
-                vertical: AppSpacing.lg.h,
-              ),
-          child: child,
+      child: Material(
+        type: MaterialType.transparency,
+        shape: RoundedRectangleBorder(borderRadius: radius),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: radius,
+          child: Padding(
+            padding:
+                padding ??
+                EdgeInsets.symmetric(
+                  horizontal: AppSpacing.lg.w,
+                  vertical: AppSpacing.lg.h,
+                ),
+            child: child,
+          ),
         ),
       ),
     );
+    return onTap == null ? card : AppPressable(scale: 0.985, child: card);
   }
 }

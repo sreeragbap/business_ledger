@@ -1,11 +1,14 @@
+import 'package:business_ledger/core/theme/app_colors.dart';
 import 'package:business_ledger/core/theme/app_motion.dart';
 import 'package:business_ledger/core/theme/app_palette.dart';
+import 'package:business_ledger/core/theme/app_radius.dart';
 import 'package:business_ledger/core/theme/app_spacing.dart';
+import 'package:business_ledger/core/widgets/app_pressable.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 
 enum AppButtonVariant {
-  /// Filled accent: the one main action on a screen.
+  /// Iridescent pastel gradient pill: the one main action on a screen.
   primary,
 
   /// Outlined: an alternative of equal weight but less emphasis.
@@ -72,18 +75,31 @@ class AppButton extends StatelessWidget {
       isLoading: isLoading,
       spinnerColour: switch (variant) {
         AppButtonVariant.primary =>
-          destructive ? context.colors.onError : context.colors.onAccent,
+          destructive
+              ? context.colors.onError
+              : context.colors.onAccentGradient,
         _ => destructive ? context.colors.error : context.colors.accent,
       },
     );
 
-    final button = switch (variant) {
+    final colors = context.colors;
+    final enabled = onPressed != null;
+    final gradient = variant == AppButtonVariant.primary && !destructive;
+
+    Widget button = switch (variant) {
       AppButtonVariant.primary => FilledButton(
         onPressed: onTap,
         style: destructive
             ? FilledButton.styleFrom(
-                backgroundColor: context.colors.error,
-                foregroundColor: context.colors.onError,
+                backgroundColor: colors.error,
+                foregroundColor: colors.onError,
+              )
+            : enabled
+            ? FilledButton.styleFrom(
+                backgroundColor: AppColors.transparent,
+                foregroundColor: colors.onAccentGradient,
+                shadowColor: AppColors.transparent,
+                overlayColor: colors.onAccentGradient,
               )
             : null,
         child: child,
@@ -106,6 +122,34 @@ class AppButton extends StatelessWidget {
         child: child,
       ),
     };
+
+    // The gradient is painted behind a transparent FilledButton, so the
+    // ripple, focus and semantics stay Material's own. It fades in and out
+    // with the enabled state.
+    if (gradient) {
+      button = AnimatedContainer(
+        duration: AppMotion.medium,
+        curve: AppMotion.standard,
+        decoration: BoxDecoration(
+          borderRadius: AppRadius.button,
+          gradient: enabled ? colors.accentGradient : null,
+          boxShadow: enabled
+              ? [
+                  BoxShadow(
+                    color: colors.glow,
+                    blurRadius: 20,
+                    offset: const Offset(0, 6),
+                  ),
+                ]
+              : null,
+        ),
+        child: button,
+      );
+    }
+
+    if (variant != AppButtonVariant.text) {
+      button = AppPressable(enabled: enabled && !isLoading, child: button);
+    }
 
     return Semantics(
       button: true,

@@ -7,6 +7,7 @@ import 'package:business_ledger/core/router/app_router.dart';
 import 'package:business_ledger/core/sync/sync_engine.dart';
 import 'package:business_ledger/core/sync/sync_status.dart';
 import 'package:business_ledger/core/theme/app_motion.dart';
+import 'package:business_ledger/core/theme/app_palette.dart';
 import 'package:business_ledger/core/theme/app_theme.dart';
 import 'package:business_ledger/core/widgets/app_snack_bar.dart';
 import 'package:business_ledger/features/app_lock/logic/app_lock_cubit/app_lock_cubit.dart';
@@ -162,7 +163,7 @@ class _SyncFrame extends StatelessWidget {
     );
     final showing = SyncStatusBanner.describe(status) != null;
     return ColoredBox(
-      color: Theme.of(context).scaffoldBackgroundColor,
+      color: context.colors.background,
       child: Column(
         children: [
           SyncStatusBanner(status: status, onTap: onTap),

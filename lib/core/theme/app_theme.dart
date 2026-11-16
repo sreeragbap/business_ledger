@@ -65,7 +65,9 @@ abstract final class AppTheme {
       brightness: p.brightness,
       extensions: [p],
       colorScheme: colorScheme,
-      scaffoldBackgroundColor: p.background,
+      // Transparent: every route paints `AppBackground` (the navy wash and
+      // its glows) beneath its page; see `AppTransitions`.
+      scaffoldBackgroundColor: AppColors.transparent,
       canvasColor: p.background,
       textTheme: textTheme,
       primaryTextTheme: textTheme,
@@ -83,27 +85,34 @@ abstract final class AppTheme {
       ),
 
       appBarTheme: AppBarTheme(
-        backgroundColor: p.background,
+        backgroundColor: AppColors.transparent,
         foregroundColor: p.textPrimary,
         surfaceTintColor: AppColors.transparent,
         elevation: 0,
         scrolledUnderElevation: 0,
         centerTitle: false,
-        titleTextStyle: textTheme.titleLarge,
+        titleTextStyle: AppTextStyles.pageTitle(p).copyWith(fontSize: 24.sp),
+        titleSpacing: AppSpacing.screenHorizontal.w,
         systemOverlayStyle:
             (isDark ? SystemUiOverlayStyle.light : SystemUiOverlayStyle.dark)
                 .copyWith(
                   statusBarColor: AppColors.transparent,
-                  systemNavigationBarColor: p.surface,
+                  systemNavigationBarColor: p.background,
                 ),
       ),
 
-      // Light: a solid accent button with white text, so it stands out on
-      // white. Dark: Material's default tonal look (muted accent, accent
-      // text), spelled out so a theme switch fades between the two.
+      // A pastel pill with dark ink, floating on a soft glow — the solid
+      // stand-in for the gradient used by `AppButton` and the shell.
       floatingActionButtonTheme: FloatingActionButtonThemeData(
-        backgroundColor: isDark ? p.accentMuted : p.accent,
-        foregroundColor: isDark ? p.accent : p.onAccent,
+        backgroundColor: isDark ? const Color(0xFFCDD8F4) : p.accent,
+        foregroundColor: isDark ? p.onAccentGradient : p.onAccent,
+        elevation: 6,
+        focusElevation: 6,
+        hoverElevation: 8,
+        highlightElevation: 2,
+        shape: const StadiumBorder(),
+        extendedTextStyle: textTheme.labelLarge,
+        extendedPadding: EdgeInsets.symmetric(horizontal: AppSpacing.xl.w),
       ),
 
       cardTheme: CardThemeData(
@@ -113,7 +122,7 @@ abstract final class AppTheme {
         margin: EdgeInsets.zero,
         shape: RoundedRectangleBorder(
           borderRadius: AppRadius.card,
-          side: BorderSide(color: p.border),
+          side: BorderSide(color: p.cardBorder),
         ),
       ),
 
@@ -150,9 +159,11 @@ abstract final class AppTheme {
         ),
       ),
 
+      // Ghost pill: a hairline of light around glass ("Mark as Complete").
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
           foregroundColor: p.textPrimary,
+          backgroundColor: p.textPrimary.withValues(alpha: isDark ? 0.03 : 0),
           disabledForegroundColor: p.textDisabled,
           minimumSize: _minTarget,
           padding: buttonPadding,
@@ -177,6 +188,35 @@ abstract final class AppTheme {
         style: IconButton.styleFrom(
           foregroundColor: p.textPrimary,
           minimumSize: _minTarget,
+        ),
+      ),
+
+      // The "Upcoming / Past" switch: a glass pill track, the chosen
+      // segment lit up as a brighter glass pill.
+      segmentedButtonTheme: SegmentedButtonThemeData(
+        style: ButtonStyle(
+          shape: const WidgetStatePropertyAll(StadiumBorder()),
+          side: WidgetStatePropertyAll(BorderSide(color: p.border)),
+          backgroundColor: WidgetStateProperty.resolveWith(
+            (states) => states.contains(WidgetState.selected)
+                ? p.accentMuted
+                : p.surfaceRaised.withValues(alpha: 0.6),
+          ),
+          foregroundColor: WidgetStateProperty.resolveWith(
+            (states) => states.contains(WidgetState.disabled)
+                ? p.textDisabled
+                : states.contains(WidgetState.selected)
+                ? p.textPrimary
+                : p.textSecondary,
+          ),
+          iconColor: WidgetStateProperty.resolveWith(
+            (states) => states.contains(WidgetState.selected)
+                ? p.accent
+                : p.textTertiary,
+          ),
+          textStyle: WidgetStatePropertyAll(textTheme.labelMedium),
+          minimumSize: const WidgetStatePropertyAll(_minTarget),
+          animationDuration: AppMotion.medium,
         ),
       ),
 
@@ -213,33 +253,40 @@ abstract final class AppTheme {
       ),
 
       bottomSheetTheme: BottomSheetThemeData(
-        backgroundColor: p.surfaceRaised,
-        modalBackgroundColor: p.surfaceRaised,
+        backgroundColor: p.surface,
+        modalBackgroundColor: p.surface,
         surfaceTintColor: AppColors.transparent,
         elevation: 0,
         modalElevation: 0,
         showDragHandle: true,
         dragHandleColor: p.borderStrong,
-        shape: RoundedRectangleBorder(borderRadius: AppRadius.sheet),
+        shape: RoundedRectangleBorder(
+          borderRadius: AppRadius.sheet,
+          side: BorderSide(color: p.border),
+        ),
         modalBarrierColor: p.scrim,
       ),
 
       dialogTheme: DialogThemeData(
-        backgroundColor: p.surfaceRaised,
+        backgroundColor: p.surface,
         surfaceTintColor: AppColors.transparent,
         elevation: 0,
-        shape: RoundedRectangleBorder(borderRadius: AppRadius.dialog),
+        shape: RoundedRectangleBorder(
+          borderRadius: AppRadius.dialog,
+          side: BorderSide(color: p.border),
+        ),
         titleTextStyle: textTheme.headlineSmall,
         contentTextStyle: textTheme.bodyMedium,
         barrierColor: p.scrim,
       ),
 
       navigationBarTheme: NavigationBarThemeData(
-        backgroundColor: p.surface,
+        backgroundColor: AppColors.transparent,
         surfaceTintColor: AppColors.transparent,
         elevation: 0,
         height: 68.h,
         indicatorColor: p.accentMuted,
+        overlayColor: const WidgetStatePropertyAll(AppColors.transparent),
         indicatorShape: RoundedRectangleBorder(borderRadius: AppRadius.chip),
         labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
         labelTextStyle: WidgetStateProperty.resolveWith(
@@ -256,14 +303,14 @@ abstract final class AppTheme {
           (states) => IconThemeData(
             size: 24,
             color: states.contains(WidgetState.selected)
-                ? p.accent
+                ? p.textPrimary
                 : p.textTertiary,
           ),
         ),
       ),
 
       chipTheme: ChipThemeData(
-        backgroundColor: p.surfaceRaised,
+        backgroundColor: p.surfaceRaised.withValues(alpha: 0.7),
         selectedColor: p.accentMuted,
         disabledColor: p.surface,
         checkmarkColor: p.accent,
@@ -277,7 +324,7 @@ abstract final class AppTheme {
       ),
 
       snackBarTheme: SnackBarThemeData(
-        backgroundColor: p.surfaceHigh,
+        backgroundColor: p.surfaceRaised,
         contentTextStyle: textTheme.bodyMedium?.copyWith(
           color: p.textPrimary,
         ),
@@ -285,7 +332,7 @@ abstract final class AppTheme {
         behavior: SnackBarBehavior.floating,
         elevation: 0,
         shape: RoundedRectangleBorder(
-          borderRadius: AppRadius.input,
+          borderRadius: AppRadius.chip,
           side: BorderSide(color: p.borderStrong),
         ),
       ),
@@ -295,7 +342,9 @@ abstract final class AppTheme {
         textColor: p.textPrimary,
         minVerticalPadding: AppSpacing.md.h,
         contentPadding: EdgeInsets.symmetric(horizontal: AppSpacing.lg.w),
-        titleTextStyle: textTheme.bodyLarge,
+        titleTextStyle: textTheme.bodyLarge?.copyWith(
+          fontWeight: FontWeight.w500,
+        ),
         subtitleTextStyle: textTheme.bodyMedium,
       ),
 

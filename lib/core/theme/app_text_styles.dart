@@ -25,35 +25,44 @@ abstract final class AppTextStyles {
 
   /// Hero figures: the dashboard balance.
   static TextStyle displayLarge(AppPalette p) => _style(
-    34,
+    36,
     FontWeight.w700,
-    height: 1.15,
-    letterSpacing: -0.5,
+    height: 1.1,
+    letterSpacing: -1,
     color: p.textPrimary,
   );
   static TextStyle displayMedium(AppPalette p) => _style(
-    28,
+    30,
     FontWeight.w700,
-    height: 1.2,
-    letterSpacing: -0.3,
+    height: 1.15,
+    letterSpacing: -0.8,
     color: p.textPrimary,
   );
   static TextStyle displaySmall(AppPalette p) =>
-      _style(24, FontWeight.w700, color: p.textPrimary);
+      _style(24, FontWeight.w700, letterSpacing: -0.6, color: p.textPrimary);
 
   static TextStyle headlineLarge(AppPalette p) =>
-      _style(22, FontWeight.w700, color: p.textPrimary);
+      _style(22, FontWeight.w700, letterSpacing: -0.5, color: p.textPrimary);
   static TextStyle headlineMedium(AppPalette p) =>
-      _style(20, FontWeight.w600, color: p.textPrimary);
+      _style(20, FontWeight.w700, letterSpacing: -0.4, color: p.textPrimary);
   static TextStyle headlineSmall(AppPalette p) =>
-      _style(18, FontWeight.w600, color: p.textPrimary);
+      _style(18, FontWeight.w600, letterSpacing: -0.3, color: p.textPrimary);
 
   static TextStyle titleLarge(AppPalette p) =>
-      _style(18, FontWeight.w600, color: p.textPrimary);
+      _style(18, FontWeight.w600, letterSpacing: -0.3, color: p.textPrimary);
   static TextStyle titleMedium(AppPalette p) =>
-      _style(16, FontWeight.w600, color: p.textPrimary);
+      _style(16, FontWeight.w600, letterSpacing: -0.2, color: p.textPrimary);
   static TextStyle titleSmall(AppPalette p) =>
-      _style(14, FontWeight.w600, color: p.textPrimary);
+      _style(14, FontWeight.w600, letterSpacing: -0.1, color: p.textPrimary);
+
+  /// Big page titles in the app bar ("Transactions"), set tight and bold.
+  static TextStyle pageTitle(AppPalette p) => _style(
+    26,
+    FontWeight.w700,
+    height: 1.2,
+    letterSpacing: -0.7,
+    color: p.textPrimary,
+  );
 
   static TextStyle bodyLarge(AppPalette p) =>
       _style(16, FontWeight.w400, height: 1.45, color: p.textPrimary);
@@ -71,7 +80,7 @@ abstract final class AppTextStyles {
   );
 
   static TextStyle labelLarge(AppPalette p) =>
-      _style(15, FontWeight.w600, letterSpacing: 0.1, color: p.textPrimary);
+      _style(15, FontWeight.w600, letterSpacing: -0.1, color: p.textPrimary);
   static TextStyle labelMedium(AppPalette p) => _style(
     13,
     FontWeight.w500,
